@@ -147,8 +147,10 @@ contract RandomnessConfig {
         requireAllowed(SystemAddresses.GOVERNANCE);
         // This chain's execution layer does not run the DKG transcript transaction: switching to
         // V2 would start a DKG session at the next epoch change that never completes, leaving the
-        // reconfiguration in progress for good (epochs and staking operations stop). Genesis may
-        // still choose the variant; governance can only keep randomness off.
+        // reconfiguration in progress for good (epochs and staking operations stop), so
+        // governance can only keep randomness off. The same holds for genesis: this chain's genesis
+        // must choose Off (the node's genesis aggregation refuses anything else); the contract
+        // still accepts V2 at genesis only for chains that do run the DKG.
         if (newConfig.variant != ConfigVariant.Off) {
             revert Errors.InvalidRandomnessConfig("only Off is supported");
         }

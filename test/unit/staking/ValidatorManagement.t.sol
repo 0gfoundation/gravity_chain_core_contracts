@@ -69,7 +69,8 @@ contract ValidatorManagementTest is Test {
     // Sample consensus key data
     bytes constant CONSENSUS_PUBKEY =
         hex"9112af1a4ef4038dfe24c5371e40b5bcfce16146bfc4ab819244ce57f5d002c4c3f06eca7273e733c0f78aada8c13deb";
-    bytes constant CONSENSUS_POP = hex"abcdef1234567890";
+    bytes constant CONSENSUS_POP =
+        hex"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
     bytes constant NETWORK_ADDRESSES = hex"0102030405060708";
     bytes constant FULLNODE_ADDRESSES = hex"0807060504030201";
 
@@ -746,6 +747,21 @@ contract ValidatorManagementTest is Test {
         vm.stopPrank();
     }
 
+    /// Each part's length is checked: the PoP precompile only sees the 144-byte concatenation, so a
+    /// valid pair split differently (e.g. an empty key and a 144-byte "PoP") would pass it.
+    function test_RevertWhen_registerConsensusKeyLengthsWrong() public {
+        address pool = _createStakePool(alice, MIN_BOND);
+        bytes memory pubkey = abi.encodePacked(pool, bytes28(keccak256(abi.encodePacked(pool))));
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidConsensusPubkeyLength.selector, 48, 0));
+        validatorManager.registerValidator(
+            pool, "alice", hex"", bytes.concat(pubkey, CONSENSUS_POP), NETWORK_ADDRESSES, FULLNODE_ADDRESSES
+        );
+        vm.expectRevert(Errors.InvalidConsensusPopLength.selector);
+        validatorManager.registerValidator(pool, "alice", pubkey, hex"abcd", NETWORK_ADDRESSES, FULLNODE_ADDRESSES);
+        vm.stopPrank();
+    }
+
     function test_getActiveValidatorBonds_matchesActiveValidators() public {
         _createRegisterAndJoin(alice, MIN_BOND, "alice");
         _createRegisterAndJoin(bob, MIN_BOND * 2, "bob");
@@ -866,7 +882,7 @@ contract ValidatorManagementTest is Test {
         address pool = _createAndRegisterValidator(alice, MIN_BOND, "alice");
         bytes memory newPubkey =
             hex"a666d31d6e3c5e8aab7e0f2e926f0b4307bbad66166a5598c8dde1152f2e16e964ad3e42f5e7c73e2e35c6a69b108f4e";
-        bytes memory newPop = hex"cafebabe";
+        bytes memory newPop = CONSENSUS_POP;
 
         vm.prank(alice);
         validatorManager.rotateConsensusKey(pool, newPubkey, newPop);
@@ -899,7 +915,7 @@ contract ValidatorManagementTest is Test {
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
         emit IValidatorManagement.ConsensusKeyRotated(pool, newPubkey);
-        validatorManager.rotateConsensusKey(pool, newPubkey, hex"");
+        validatorManager.rotateConsensusKey(pool, newPubkey, CONSENSUS_POP);
     }
 
     // ========================================================================
@@ -948,7 +964,7 @@ contract ValidatorManagementTest is Test {
         // Alice tries to rotate to Bob's pubkey - should fail
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Errors.DuplicateConsensusPubkey.selector, bobPubkey));
-        validatorManager.rotateConsensusKey(alicePool, bobPubkey, hex"abcd1234");
+        validatorManager.rotateConsensusKey(alicePool, bobPubkey, CONSENSUS_POP);
     }
 
     /// @notice Test that after rotation AND epoch, old pubkey can be reused by another validator
@@ -966,7 +982,7 @@ contract ValidatorManagementTest is Test {
         bytes memory aliceNewPubkey =
             hex"a1ecafe00000000200000000000000000000000000000000000000000000000000000000000000000000000000000000";
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(alicePool, aliceNewPubkey, hex"abcd1234");
+        validatorManager.rotateConsensusKey(alicePool, aliceNewPubkey, CONSENSUS_POP);
 
         // Old pubkey is still reserved (active key) until epoch boundary.
         // Bob should NOT be able to use Alice's old key before epoch processes.
@@ -1020,7 +1036,7 @@ contract ValidatorManagementTest is Test {
         bytes memory alicePendingPubkey =
             hex"deadbeef0000000700000000000000000000000000000000000000000000000000000000000000000000000000000000";
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(alicePool, alicePendingPubkey, hex"abcd1234");
+        validatorManager.rotateConsensusKey(alicePool, alicePendingPubkey, CONSENSUS_POP);
 
         // While the pending key is reserved, Bob cannot use it.
         address bobPool = _createStakePool(bob, MIN_BOND);
@@ -1079,7 +1095,7 @@ contract ValidatorManagementTest is Test {
         bytes memory alicePendingPubkey =
             hex"deadbeef0000000800000000000000000000000000000000000000000000000000000000000000000000000000000000";
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(alicePool, alicePendingPubkey, hex"abcd1234");
+        validatorManager.rotateConsensusKey(alicePool, alicePendingPubkey, CONSENSUS_POP);
 
         // Sanity: pending reservation blocks Bob.
         address bobPool = _createStakePool(bob, MIN_BOND);
@@ -1128,7 +1144,7 @@ contract ValidatorManagementTest is Test {
         bytes memory alicePendingPubkey =
             hex"deadbeef0000000900000000000000000000000000000000000000000000000000000000000000000000000000000000";
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(alicePool, alicePendingPubkey, hex"abcd1234");
+        validatorManager.rotateConsensusKey(alicePool, alicePendingPubkey, CONSENSUS_POP);
 
         // Governance force-leaves Alice while still PENDING_ACTIVE.
         vm.prank(SystemAddresses.GOVERNANCE);
@@ -1174,7 +1190,7 @@ contract ValidatorManagementTest is Test {
         bytes memory aliceNewPubkey =
             hex"a1ecafe00000000300000000000000000000000000000000000000000000000000000000000000000000000000000000";
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(alicePool, aliceNewPubkey, hex"abcd1234");
+        validatorManager.rotateConsensusKey(alicePool, aliceNewPubkey, CONSENSUS_POP);
 
         // Key should be pending, not immediately applied
         ValidatorRecord memory aliceRecord = validatorManager.getValidator(alicePool);
@@ -2753,7 +2769,7 @@ contract ValidatorManagementTest is Test {
         // Rotate key
         bytes memory newPubkey =
             hex"a666d31d6e3c5e8aab7e0f2e926f0b4307bbad66166a5598c8dde1152f2e16e964ad3e42f5e7c73e2e35c6a69b108f4e";
-        bytes memory newPop = hex"cafebabe";
+        bytes memory newPop = CONSENSUS_POP;
         vm.prank(alice);
         validatorManager.rotateConsensusKey(pool, newPubkey, newPop);
 
@@ -2783,17 +2799,17 @@ contract ValidatorManagementTest is Test {
 
         // First rotation
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(pool, key1, hex"aa01");
+        validatorManager.rotateConsensusKey(pool, key1, CONSENSUS_POP);
 
         // Second rotation should work (releases key1 reservation)
         vm.prank(alice);
-        validatorManager.rotateConsensusKey(pool, key2, hex"bb02");
+        validatorManager.rotateConsensusKey(pool, key2, CONSENSUS_POP);
 
         // key1 should now be available for others
         address bobPool = _createAndRegisterValidator(bob, MIN_BOND, "bob");
         // Bob should be able to rotate to key1 (it was released by Alice's second rotation)
         vm.prank(bob);
-        validatorManager.rotateConsensusKey(bobPool, key1, hex"cc03");
+        validatorManager.rotateConsensusKey(bobPool, key1, CONSENSUS_POP);
 
         ValidatorRecord memory aliceRecord = validatorManager.getValidator(pool);
         assertEq(aliceRecord.pendingConsensusPubkey, key2, "Alice pending should be key2");

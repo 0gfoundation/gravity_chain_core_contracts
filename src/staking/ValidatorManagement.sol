@@ -45,6 +45,8 @@ contract ValidatorManagement is IValidatorManagement {
     uint256 public constant MAX_MONIKER_LENGTH = 31;
 
     /// @notice Maximum length of each encoded network address (validator and fullnode)
+    /// @dev Each field is one BCS string; an /ip4/... address with its noise key is about 120 bytes,
+    ///      which leaves room for a /dns/ host name of about 150 characters.
     /// @dev Every validator's addresses are copied on the per-epoch path (next validator set,
     ///      NewEpochEvent) and the proposer's on every block; unbounded addresses could push the
     ///      per-block system transaction past its gas limit and freeze epochs and time.
@@ -52,6 +54,9 @@ contract ValidatorManagement is IValidatorManagement {
 
     /// @notice Expected BLS12-381 G1 compressed public key length in bytes
     uint256 public constant BLS12381_PUBKEY_LENGTH = 48;
+
+    /// @notice BLS12-381 proof of possession length (a compressed G2 signature)
+    uint256 public constant BLS12381_POP_LENGTH = 96;
 
     /// @notice Precision factor for percentage calculations
     uint256 internal constant PRECISION_FACTOR = 1e4;
@@ -340,6 +345,14 @@ contract ValidatorManagement is IValidatorManagement {
         bytes calldata consensusPubkey,
         bytes calldata consensusPop
     ) internal view {
+        // The precompile only checks that the two together are 144 bytes, so a valid pair split
+        // differently would pass it: check each part's length first.
+        if (consensusPubkey.length != BLS12381_PUBKEY_LENGTH) {
+            revert Errors.InvalidConsensusPubkeyLength(BLS12381_PUBKEY_LENGTH, consensusPubkey.length);
+        }
+        if (consensusPop.length != BLS12381_POP_LENGTH) {
+            revert Errors.InvalidConsensusPopLength();
+        }
         bytes memory input = abi.encodePacked(consensusPubkey, consensusPop);
         (bool success, bytes memory result) = SystemAddresses.BLS_POP_VERIFY_PRECOMPILE.staticcall(input);
         if (!success || result.length < 32 || abi.decode(result, (uint256)) == 0) {

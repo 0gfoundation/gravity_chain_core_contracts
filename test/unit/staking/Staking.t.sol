@@ -498,11 +498,15 @@ contract StakingTest is Test {
     }
 
     function test_RevertWhen_createPoolLockupBeyondMaximum() public {
-        uint64 max = StakePool(payable(_createPool(bob, MIN_STAKE))).MAX_LOCKUP_DURATION();
-        uint64 lockedUntil = INITIAL_TIMESTAMP + max + 1;
+        uint64 max = uint64(4 * 365 days) * 1_000_000;
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Errors.ExcessiveLockupDuration.selector, max + 1, max));
-        staking.createPool{ value: MIN_STAKE }(alice, alice, alice, alice, lockedUntil);
+        staking.createPool{ value: MIN_STAKE }(alice, alice, alice, alice, INITIAL_TIMESTAMP + max + 1);
+
+        // Exactly the maximum is accepted
+        vm.prank(alice);
+        address pool = staking.createPool{ value: MIN_STAKE }(alice, alice, alice, alice, INITIAL_TIMESTAMP + max);
+        assertEq(IStakePool(pool).getLockedUntil(), INITIAL_TIMESTAMP + max);
     }
 
     function test_unstake_createsNewBucketWhenLockedUntilDifferent() public {

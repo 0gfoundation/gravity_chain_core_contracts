@@ -375,7 +375,7 @@ library Errors {
     /// @param value The invalid value provided
     error InvalidVotingPowerIncreaseLimit(uint64 value);
 
-    /// @notice Validator set size out of range (1-65536)
+    /// @notice Validator set size out of range (1-250)
     /// @param value The invalid value provided
     error InvalidValidatorSetSize(uint256 value);
 
@@ -595,7 +595,7 @@ library Errors {
     error RoleAlreadySet();
 
     // ========================================================================
-    // REWARD ERRORS
+    // VALIDATOR ADDRESS AND EPOCH BOUND ERRORS
     // ========================================================================
 
     /// @notice A validator network address is too long
@@ -607,6 +607,10 @@ library Errors {
     /// @param interval Requested interval (microseconds)
     /// @param minimum Minimum interval (microseconds)
     error EpochIntervalTooShort(uint64 interval, uint64 minimum);
+
+    // ========================================================================
+    // REWARD ERRORS
+    // ========================================================================
 
     /// @notice RewardConfig has already been initialized
     error RewardConfigAlreadyInitialized();

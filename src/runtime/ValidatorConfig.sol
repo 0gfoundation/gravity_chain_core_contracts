@@ -108,7 +108,7 @@ contract ValidatorConfig {
     /// @param _unbondingDelayMicros Unbonding delay in microseconds (must be > 0)
     /// @param _allowValidatorSetChange Whether validators can join/leave post-genesis
     /// @param _votingPowerIncreaseLimitPct Max % voting power join per epoch (1-50)
-    /// @param _maxValidatorSetSize Max validators in set (1-65536)
+    /// @param _maxValidatorSetSize Max validators in set (1-250)
     /// @param _autoEvictEnabled Whether auto-eviction is enabled at genesis
     /// @param _autoEvictThresholdPct Minimum success percentage to avoid eviction (0-100)
     function initialize(
@@ -180,7 +180,7 @@ contract ValidatorConfig {
     /// @param _unbondingDelayMicros Unbonding delay in microseconds (must be > 0)
     /// @param _allowValidatorSetChange Whether validators can join/leave post-genesis
     /// @param _votingPowerIncreaseLimitPct Max % voting power join per epoch (1-50)
-    /// @param _maxValidatorSetSize Max validators in set (1-65536)
+    /// @param _maxValidatorSetSize Max validators in set (1-250)
     /// @param _autoEvictEnabled Whether auto-eviction is enabled
     /// @param _autoEvictThresholdPct Minimum success percentage to avoid eviction (0-100)
     function setForNextEpoch(
