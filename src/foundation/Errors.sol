@@ -598,6 +598,16 @@ library Errors {
     // REWARD ERRORS
     // ========================================================================
 
+    /// @notice A validator network address is too long
+    /// @param maxLength Maximum allowed length
+    /// @param actualLength Provided length
+    error NetworkAddressTooLong(uint256 maxLength, uint256 actualLength);
+
+    /// @notice The epoch interval is below the minimum
+    /// @param interval Requested interval (microseconds)
+    /// @param minimum Minimum interval (microseconds)
+    error EpochIntervalTooShort(uint64 interval, uint64 minimum);
+
     /// @notice RewardConfig has already been initialized
     error RewardConfigAlreadyInitialized();
 

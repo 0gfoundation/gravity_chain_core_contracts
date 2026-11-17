@@ -98,6 +98,17 @@ contract EpochConfigTest is Test {
         config.setForNextEpoch(0);
     }
 
+    function test_RevertWhen_SetForNextEpoch_BelowMinimum() public {
+        _initializeConfig();
+        uint64 min = config.MIN_EPOCH_INTERVAL_MICROS();
+
+        vm.startPrank(SystemAddresses.GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(Errors.EpochIntervalTooShort.selector, min - 1, min));
+        config.setForNextEpoch(min - 1);
+        config.setForNextEpoch(min);
+        vm.stopPrank();
+    }
+
     function test_RevertWhen_SetForNextEpoch_NotInitialized() public {
         vm.prank(SystemAddresses.GOVERNANCE);
         vm.expectRevert(Errors.EpochConfigNotInitialized.selector);
@@ -220,7 +231,7 @@ contract EpochConfigTest is Test {
     function testFuzz_Initialize(
         uint64 interval
     ) public {
-        vm.assume(interval > 0);
+        vm.assume(interval >= config.MIN_EPOCH_INTERVAL_MICROS());
 
         vm.prank(SystemAddresses.GENESIS);
         config.initialize(interval);
@@ -232,7 +243,7 @@ contract EpochConfigTest is Test {
     function testFuzz_SetForNextEpoch(
         uint64 newInterval
     ) public {
-        vm.assume(newInterval > 0);
+        vm.assume(newInterval >= config.MIN_EPOCH_INTERVAL_MICROS());
         _initializeConfig();
 
         vm.prank(SystemAddresses.GOVERNANCE);
@@ -247,7 +258,7 @@ contract EpochConfigTest is Test {
     function testFuzz_ApplyPendingConfig(
         uint64 newInterval
     ) public {
-        vm.assume(newInterval > 0);
+        vm.assume(newInterval >= config.MIN_EPOCH_INTERVAL_MICROS());
         _initializeConfig();
 
         vm.prank(SystemAddresses.GOVERNANCE);

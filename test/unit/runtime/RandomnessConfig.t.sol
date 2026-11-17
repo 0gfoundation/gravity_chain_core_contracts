@@ -118,6 +118,14 @@ contract RandomnessConfigTest is Test {
     // VIEW FUNCTION TESTS
     // ========================================================================
 
+    /// Governance can only keep randomness off: the DKG it would start never completes here.
+    function test_RevertWhen_GovernanceEnablesV2() public {
+        _initializeWithOff();
+        vm.prank(SystemAddresses.GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidRandomnessConfig.selector, "only Off is supported"));
+        config.setForNextEpoch(_createV2Config(HALF, TWO_THIRDS, THREE_QUARTERS));
+    }
+
     function test_Enabled_Off() public {
         _initializeWithOff();
         assertFalse(config.enabled());
@@ -196,16 +204,13 @@ contract RandomnessConfigTest is Test {
         vm.prank(SystemAddresses.GOVERNANCE);
         config.setForNextEpoch(_createOffConfig());
 
-        // Overwrite with new pending config
-        RandomnessConfig.RandomnessConfigData memory newV2Config =
-            _createV2Config(THREE_QUARTERS, THREE_QUARTERS, THREE_QUARTERS);
+        // Overwrite with another pending config (governance can only choose Off)
         vm.prank(SystemAddresses.GOVERNANCE);
-        config.setForNextEpoch(newV2Config);
+        config.setForNextEpoch(_createOffConfig());
 
         (bool hasPending, RandomnessConfig.RandomnessConfigData memory pendingConfig) = config.getPendingConfig();
         assertTrue(hasPending);
-        assertEq(uint8(pendingConfig.variant), uint8(RandomnessConfig.ConfigVariant.V2));
-        assertEq(pendingConfig.configV2.secrecyThreshold, THREE_QUARTERS);
+        assertEq(uint8(pendingConfig.variant), uint8(RandomnessConfig.ConfigVariant.Off));
     }
 
     function test_RevertWhen_SetForNextEpoch_NotGovernance() public {
@@ -256,13 +261,11 @@ contract RandomnessConfigTest is Test {
     function test_RevertWhen_SetForNextEpoch_InvalidConfig() public {
         _initializeWithV2();
 
-        // Invalid: reconstruction < secrecy
+        // Any V2 config is refused through governance, valid or not
         RandomnessConfig.RandomnessConfigData memory invalidConfig = _createV2Config(TWO_THIRDS, HALF, THREE_QUARTERS);
 
         vm.prank(SystemAddresses.GOVERNANCE);
-        vm.expectRevert(
-            abi.encodeWithSelector(Errors.InvalidRandomnessConfig.selector, "reconstruction must be >= secrecy")
-        );
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidRandomnessConfig.selector, "only Off is supported"));
         config.setForNextEpoch(invalidConfig);
     }
 
@@ -424,24 +427,12 @@ contract RandomnessConfigTest is Test {
         _initializeWithOff();
         vm.assume(reconstruction >= secrecy);
 
-        RandomnessConfig.RandomnessConfigData memory newConfig = _createV2Config(secrecy, reconstruction, fastPath);
-
-        // Set pending
+        // Governance cannot switch randomness on, whatever the thresholds
         vm.prank(SystemAddresses.GOVERNANCE);
-        config.setForNextEpoch(newConfig);
-        assertTrue(config.hasPendingConfig());
-        assertFalse(config.enabled()); // Still Off
-
-        // Apply pending
-        vm.prank(SystemAddresses.RECONFIGURATION);
-        config.applyPendingConfig();
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidRandomnessConfig.selector, "only Off is supported"));
+        config.setForNextEpoch(_createV2Config(secrecy, reconstruction, fastPath));
         assertFalse(config.hasPendingConfig());
-        assertTrue(config.enabled()); // Now V2
-
-        RandomnessConfig.RandomnessConfigData memory currentConfig = config.getCurrentConfig();
-        assertEq(currentConfig.configV2.secrecyThreshold, secrecy);
-        assertEq(currentConfig.configV2.reconstructionThreshold, reconstruction);
-        assertEq(currentConfig.configV2.fastPathSecrecyThreshold, fastPath);
+        assertFalse(config.enabled());
     }
 
     function testFuzz_RevertWhen_InvalidV2Config(

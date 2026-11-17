@@ -463,6 +463,48 @@ contract StakingTest is Test {
         assertEq(bucket.cumulativeAmount, 5 ether, "Bucket cumulative should be 5 ether");
     }
 
+    /// The bucket cap counts unclaimed buckets only: claiming frees room for new ones.
+    function test_unstake_bucketCapCountsUnclaimedOnly() public {
+        vm.prank(alice);
+        address pool = _createPool(alice, 10 ether);
+        uint256 cap = StakePool(payable(pool)).MAX_PENDING_BUCKETS();
+
+        for (uint256 i = 0; i < cap; i++) {
+            vm.startPrank(alice);
+            IStakePool(pool).renewLockUntil(1); // a new lockedUntil: a new bucket
+            IStakePool(pool).unstake(1);
+            vm.stopPrank();
+        }
+        assertEq(IStakePool(pool).getPendingBucketCount(), cap);
+
+        vm.startPrank(alice);
+        IStakePool(pool).renewLockUntil(1);
+        vm.expectRevert(abi.encodeWithSelector(Errors.TooManyPendingBuckets.selector, cap, cap));
+        IStakePool(pool).unstake(1);
+        vm.stopPrank();
+
+        // Claim everything, then unstaking opens new buckets again
+        _advanceTime(LOCKUP_DURATION + uint64(cap) + 10 + UNBONDING_DELAY + 1);
+        vm.prank(alice);
+        IStakePool(pool).withdrawAvailable(alice);
+        assertEq(IStakePool(pool).getTotalPending(), 0);
+
+        vm.startPrank(alice);
+        IStakePool(pool).renewLockUntil(2 * (LOCKUP_DURATION + UNBONDING_DELAY));
+        IStakePool(pool).unstake(1);
+        vm.stopPrank();
+        assertEq(IStakePool(pool).getPendingBucketCount(), cap + 1);
+        assertEq(IStakePool(pool).getTotalPending(), 1);
+    }
+
+    function test_RevertWhen_createPoolLockupBeyondMaximum() public {
+        uint64 max = StakePool(payable(_createPool(bob, MIN_STAKE))).MAX_LOCKUP_DURATION();
+        uint64 lockedUntil = INITIAL_TIMESTAMP + max + 1;
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Errors.ExcessiveLockupDuration.selector, max + 1, max));
+        staking.createPool{ value: MIN_STAKE }(alice, alice, alice, alice, lockedUntil);
+    }
+
     function test_unstake_createsNewBucketWhenLockedUntilDifferent() public {
         vm.prank(alice);
         address pool = _createPool(alice, 10 ether);

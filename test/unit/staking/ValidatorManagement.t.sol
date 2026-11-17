@@ -730,6 +730,22 @@ contract ValidatorManagementTest is Test {
         }
     }
 
+    function test_RevertWhen_registerNetworkAddressTooLong() public {
+        address pool = _createStakePool(alice, MIN_BOND);
+        bytes memory pubkey = abi.encodePacked(pool, bytes28(keccak256(abi.encodePacked(pool))));
+        uint256 max = validatorManager.MAX_NETWORK_ADDRESS_LENGTH();
+        bytes memory tooLong = new bytes(max + 1);
+
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Errors.NetworkAddressTooLong.selector, max, max + 1));
+        validatorManager.registerValidator(pool, "alice", pubkey, CONSENSUS_POP, tooLong, FULLNODE_ADDRESSES);
+        vm.expectRevert(abi.encodeWithSelector(Errors.NetworkAddressTooLong.selector, max, max + 1));
+        validatorManager.registerValidator(pool, "alice", pubkey, CONSENSUS_POP, NETWORK_ADDRESSES, tooLong);
+        // At the limit is fine
+        validatorManager.registerValidator(pool, "alice", pubkey, CONSENSUS_POP, new bytes(max), new bytes(max));
+        vm.stopPrank();
+    }
+
     function test_getActiveValidatorBonds_matchesActiveValidators() public {
         _createRegisterAndJoin(alice, MIN_BOND, "alice");
         _createRegisterAndJoin(bob, MIN_BOND * 2, "bob");

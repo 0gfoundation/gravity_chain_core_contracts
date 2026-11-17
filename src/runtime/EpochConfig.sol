@@ -12,6 +12,12 @@ import { Errors } from "../foundation/Errors.sol";
 ///      Uses pending config pattern: changes are queued and applied at epoch boundaries.
 ///      The epoch interval determines how long each epoch lasts.
 contract EpochConfig {
+    /// @notice Shortest allowed epoch interval: 10 seconds
+    /// @dev An interval shorter than the block time would close an epoch in every block, and blocks
+    ///      that close an epoch carry no user transactions: no proposal to undo it could be
+    ///      included again.
+    uint64 public constant MIN_EPOCH_INTERVAL_MICROS = 10_000_000;
+
     // ========================================================================
     // STATE
     // ========================================================================
@@ -64,6 +70,9 @@ contract EpochConfig {
         if (_epochIntervalMicros == 0) {
             revert Errors.InvalidEpochInterval();
         }
+        if (_epochIntervalMicros < MIN_EPOCH_INTERVAL_MICROS) {
+            revert Errors.EpochIntervalTooShort(_epochIntervalMicros, MIN_EPOCH_INTERVAL_MICROS);
+        }
 
         epochIntervalMicros = _epochIntervalMicros;
         _initialized = true;
@@ -104,6 +113,9 @@ contract EpochConfig {
 
         if (_epochIntervalMicros == 0) {
             revert Errors.InvalidEpochInterval();
+        }
+        if (_epochIntervalMicros < MIN_EPOCH_INTERVAL_MICROS) {
+            revert Errors.EpochIntervalTooShort(_epochIntervalMicros, MIN_EPOCH_INTERVAL_MICROS);
         }
 
         _pendingEpochIntervalMicros = _epochIntervalMicros;

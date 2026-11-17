@@ -44,6 +44,12 @@ contract ValidatorManagement is IValidatorManagement {
     /// @notice Maximum moniker length in bytes
     uint256 public constant MAX_MONIKER_LENGTH = 31;
 
+    /// @notice Maximum length of each encoded network address (validator and fullnode)
+    /// @dev Every validator's addresses are copied on the per-epoch path (next validator set,
+    ///      NewEpochEvent) and the proposer's on every block; unbounded addresses could push the
+    ///      per-block system transaction past its gas limit and freeze epochs and time.
+    uint256 public constant MAX_NETWORK_ADDRESS_LENGTH = 256;
+
     /// @notice Expected BLS12-381 G1 compressed public key length in bytes
     uint256 public constant BLS12381_PUBKEY_LENGTH = 48;
 
@@ -162,6 +168,7 @@ contract ValidatorManagement is IValidatorManagement {
         if (bytes(v.moniker).length > MAX_MONIKER_LENGTH) {
             revert Errors.MonikerTooLong(MAX_MONIKER_LENGTH, bytes(v.moniker).length);
         }
+        _validateNetworkAddresses(v.networkAddresses, v.fullnodeAddresses);
 
         // Validate consensus key length (PoP precompile not available at genesis)
         if (v.consensusPubkey.length != BLS12381_PUBKEY_LENGTH) {
@@ -261,6 +268,7 @@ contract ValidatorManagement is IValidatorManagement {
 
         // Validate inputs and get required data
         _validateRegistration(stakePool, moniker);
+        _validateNetworkAddresses(networkAddresses, fullnodeAddresses);
 
         // Create validator record
         _createValidatorRecord(stakePool, moniker, consensusPubkey, consensusPop, networkAddresses, fullnodeAddresses);
@@ -306,6 +314,19 @@ contract ValidatorManagement is IValidatorManagement {
         // Verify moniker length
         if (bytes(moniker).length > MAX_MONIKER_LENGTH) {
             revert Errors.MonikerTooLong(MAX_MONIKER_LENGTH, bytes(moniker).length);
+        }
+    }
+
+    /// @notice Reject network addresses longer than MAX_NETWORK_ADDRESS_LENGTH
+    function _validateNetworkAddresses(
+        bytes calldata networkAddresses,
+        bytes calldata fullnodeAddresses
+    ) internal pure {
+        if (networkAddresses.length > MAX_NETWORK_ADDRESS_LENGTH) {
+            revert Errors.NetworkAddressTooLong(MAX_NETWORK_ADDRESS_LENGTH, networkAddresses.length);
+        }
+        if (fullnodeAddresses.length > MAX_NETWORK_ADDRESS_LENGTH) {
+            revert Errors.NetworkAddressTooLong(MAX_NETWORK_ADDRESS_LENGTH, fullnodeAddresses.length);
         }
     }
 
