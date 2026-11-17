@@ -50,6 +50,24 @@ contract MockValidatorSet {
     function getActiveValidators() external view returns (ValidatorConsensusInfo[] memory) {
         return _validators;
     }
+
+    /// Reads only the pool, bond and index slots, like ValidatorManagement.getActiveValidatorBonds
+    function getActiveValidatorBonds()
+        external
+        view
+        returns (address[] memory pools, uint256[] memory bonds, uint64[] memory indices)
+    {
+        uint256 n = _validators.length;
+        pools = new address[](n);
+        bonds = new uint256[](n);
+        indices = new uint64[](n);
+        for (uint256 i = 0; i < n; i++) {
+            ValidatorConsensusInfo storage v = _validators[i];
+            pools[i] = v.validator;
+            bonds[i] = v.votingPower;
+            indices[i] = v.validatorIndex;
+        }
+    }
 }
 
 contract MockPerformance {
@@ -334,7 +352,8 @@ contract RewardDistributorTest is Test {
         assertEq(logs[logs.length - 1].topics[0], RewardDistributor.EpochRewardsDistributed.selector);
     }
 
-    /// Paying a full validator set (100) stays well inside the gas Reconfiguration gives it.
+    /// Paying a full validator set (100) from cold storage stays well inside the gas Reconfiguration
+    /// gives it (REWARD_DISTRIBUTION_GAS).
     function test_GasForFullValidatorSet() public {
         for (uint64 i = 0; i < 100; i++) {
             validatorSet.addFull(address(uint160(0x2000 + i)), 100 ether, i);
@@ -342,11 +361,20 @@ contract RewardDistributorTest is Test {
         }
         reconfig.set(T0, 1);
         _setTime(T0 + TWO_HOURS);
+        // As at an epoch transition: nothing read yet in this transaction
+        vm.cool(address(validatorSet));
+        vm.cool(address(performance));
+        vm.cool(address(reconfig));
+        vm.cool(address(timestamp));
+        vm.cool(SystemAddresses.EPOCH_CONFIG);
+        vm.cool(SystemAddresses.REWARD_CONFIG);
+        vm.cool(SystemAddresses.REWARD_DISTRIBUTOR);
+        vm.cool(SystemAddresses.NATIVE_MINT_PRECOMPILE);
 
         uint256 before = gasleft();
         _distribute();
         uint256 used = before - gasleft();
-        emit log_named_uint("gas for 100 validators", used);
+        emit log_named_uint("gas for 100 validators (cold)", used);
         assertLt(used, 5_000_000);
         assertGt(_minted(address(uint160(0x2000 + 99))), 0);
     }

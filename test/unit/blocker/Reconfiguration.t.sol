@@ -602,10 +602,10 @@ contract ReconfigurationTest is Test {
 
         _advanceTime(TWO_HOURS + 1);
         _startTransition();
-        uint256 before = gasleft();
-        _finishTransition("");
+        // Under the per-block system transaction's gas limit
+        vm.prank(SystemAddresses.SYSTEM_CALLER);
+        Reconfiguration(SystemAddresses.RECONFIGURATION).finishTransition{ gas: 30_000_000 }("");
         assertEq(Reconfiguration(SystemAddresses.RECONFIGURATION).currentEpoch(), 2);
-        assertLt(before - gasleft(), 30_000_000, "fits the per-block system transaction");
     }
 
     /// The distributor runs while the closing epoch's state is in place: before configs are applied

@@ -8,7 +8,7 @@ import { SystemAddresses } from "../foundation/SystemAddresses.sol";
 import { Errors } from "../foundation/Errors.sol";
 import { IStaking } from "../staking/IStaking.sol";
 import { IValidatorManagement } from "../staking/IValidatorManagement.sol";
-import { ValidatorStatus, ValidatorConsensusInfo } from "../foundation/Types.sol";
+import { ValidatorStatus } from "../foundation/Types.sol";
 import { IValidatorConfig } from "../runtime/IValidatorConfig.sol";
 import { ITimestamp } from "../runtime/ITimestamp.sol";
 import { requireAllowed } from "../foundation/SystemAccessControl.sol";
@@ -448,13 +448,13 @@ contract Governance is IGovernance, Ownable2Step {
         });
 
         // Snapshot the current epoch's validator set and voting power
-        ValidatorConsensusInfo[] memory validators =
-            IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getActiveValidators();
+        (address[] memory pools, uint256[] memory bonds,) =
+            IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getActiveValidatorBonds();
         uint256 totalPower;
-        for (uint256 i = 0; i < validators.length; i++) {
-            uint256 power = validators[i].votingPower;
+        for (uint256 i = 0; i < pools.length; i++) {
+            uint256 power = bonds[i];
             if (power > type(uint128).max) power = type(uint128).max;
-            proposalVotingPowerSnapshot[proposalId][validators[i].validator] = uint128(power);
+            proposalVotingPowerSnapshot[proposalId][pools[i]] = uint128(power);
             totalPower += power;
         }
         proposalTotalVotingPower[proposalId] = totalPower > type(uint128).max ? type(uint128).max : uint128(totalPower);
@@ -540,7 +540,7 @@ contract Governance is IGovernance, Ownable2Step {
             revert Errors.NotInProposalSnapshot(stakePool, proposalId);
         }
 
-        // Remaining voting power: the pool's current validator voting power minus what it used
+        // Remaining voting power: the lower of its snapshot and current power, minus what it used
         uint128 remaining = getRemainingVotingPower(stakePool, proposalId);
 
         // Cap voting power at remaining (similar to Aptos's min(voting_power, staking_pool_voting_power))

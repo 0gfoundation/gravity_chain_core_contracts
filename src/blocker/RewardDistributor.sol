@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import { SystemAddresses } from "../foundation/SystemAddresses.sol";
 import { requireAllowed } from "../foundation/SystemAccessControl.sol";
-import { ValidatorConsensusInfo } from "../foundation/Types.sol";
 import { IReconfiguration } from "./IReconfiguration.sol";
 import { IValidatorPerformanceTracker } from "./IValidatorPerformanceTracker.sol";
 import { IValidatorManagement } from "../staking/IValidatorManagement.sol";
@@ -108,33 +107,31 @@ contract RewardDistributor {
             return;
         }
 
-        ValidatorConsensusInfo[] memory validators =
-            IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getActiveValidators();
+        (address[] memory pools, uint256[] memory bonds, uint64[] memory indices) =
+            IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getActiveValidatorBonds();
         IValidatorPerformanceTracker.IndividualPerformance[] memory performances =
             IValidatorPerformanceTracker(SystemAddresses.PERFORMANCE_TRACKER).getAllPerformances();
 
         uint256 total;
-        uint256 len = validators.length;
+        uint256 len = pools.length;
         for (uint256 i = 0; i < len; i++) {
-            ValidatorConsensusInfo memory v = validators[i];
-            if (v.validatorIndex >= performances.length) {
+            if (indices[i] >= performances.length) {
                 continue;
             }
-            IValidatorPerformanceTracker.IndividualPerformance memory p = performances[v.validatorIndex];
+            IValidatorPerformanceTracker.IndividualPerformance memory p = performances[indices[i]];
             uint256 rounds = uint256(p.successfulProposals) + uint256(p.failedProposals);
             if (p.successfulProposals == 0) {
                 continue;
             }
-            uint256 amount =
-                v.votingPower * rateBps * elapsed * p.successfulProposals / (BPS * MICROS_PER_YEAR * rounds);
+            uint256 amount = bonds[i] * rateBps * elapsed * p.successfulProposals / (BPS * MICROS_PER_YEAR * rounds);
             if (amount == 0) {
                 continue;
             }
-            if (_mint(v.validator, amount)) {
+            if (_mint(pools[i], amount)) {
                 total += amount;
-                emit ValidatorRewarded(epoch, v.validator, amount, p.successfulProposals, p.failedProposals);
+                emit ValidatorRewarded(epoch, pools[i], amount, p.successfulProposals, p.failedProposals);
             } else {
-                emit RewardMintFailed(epoch, v.validator, amount);
+                emit RewardMintFailed(epoch, pools[i], amount);
             }
         }
 

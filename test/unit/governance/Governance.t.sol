@@ -119,6 +119,29 @@ contract MockValidatorManagement {
         record.bond = _bond(pool);
     }
 
+    function getActiveValidatorBonds()
+        external
+        view
+        returns (address[] memory pools, uint256[] memory bonds, uint64[] memory indices)
+    {
+        uint256 n;
+        for (uint256 i = 0; i < _pools.length; i++) {
+            if (_inSet(_pools[i])) n++;
+        }
+        pools = new address[](n);
+        bonds = new uint256[](n);
+        indices = new uint64[](n);
+        uint256 j;
+        for (uint256 i = 0; i < _pools.length; i++) {
+            if (_inSet(_pools[i])) {
+                pools[j] = _pools[i];
+                bonds[j] = _bond(_pools[i]);
+                indices[j] = uint64(j);
+                j++;
+            }
+        }
+    }
+
     function getActiveValidators() external view returns (ValidatorConsensusInfo[] memory result) {
         uint256 n;
         for (uint256 i = 0; i < _pools.length; i++) {

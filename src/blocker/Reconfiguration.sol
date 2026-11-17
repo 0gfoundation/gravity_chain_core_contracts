@@ -30,17 +30,19 @@ import { RewardDistributor } from "./RewardDistributor.sol";
 ///      Epoch interval is configured via EpochConfig contract.
 ///      Entry points: checkAndStartTransition() from Blocker, finishTransition() from consensus/governance.
 contract Reconfiguration is IReconfiguration {
-    /// @notice Gas available to the block reward distribution at each epoch transition
-    /// @dev Paying a full validator set (maxValidatorSetSize) needs a fraction of this; the cap
-    ///      bounds what a failing distribution can take from the per-block system transaction.
-    uint256 public constant REWARD_DISTRIBUTION_GAS = 10_000_000;
-
     // ========================================================================
     // CONSTANTS
     // ========================================================================
 
     /// @notice Microseconds per second for conversion
     uint64 public constant MICRO_CONVERSION_FACTOR = 1_000_000;
+
+    /// @notice Gas available to the block reward distribution at each epoch transition
+    /// @dev The cap bounds what a failing distribution can take from the per-block system
+    ///      transaction. Paying one validator costs about 40k gas with cold storage (a validator
+    ///      set of 100 about 4M), so this covers a set of about 250 validators; above that, the
+    ///      distribution runs out of gas, is reported by RewardDistributionFailed and pays nothing.
+    uint256 public constant REWARD_DISTRIBUTION_GAS = 10_000_000;
 
     // ========================================================================
     // STATE

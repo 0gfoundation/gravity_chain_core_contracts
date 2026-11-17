@@ -1191,6 +1191,25 @@ contract ValidatorManagement is IValidatorManagement {
     }
 
     /// @inheritdoc IValidatorManagement
+    function getActiveValidatorBonds()
+        external
+        view
+        returns (address[] memory pools, uint256[] memory bonds, uint64[] memory indices)
+    {
+        uint256 length = _activeValidators.length;
+        pools = new address[](length);
+        bonds = new uint256[](length);
+        indices = new uint64[](length);
+        for (uint256 i = 0; i < length; i++) {
+            address pool = _activeValidators[i];
+            ValidatorRecord storage validator = _validators[pool];
+            pools[i] = pool;
+            bonds[i] = validator.bond;
+            indices[i] = validator.validatorIndex;
+        }
+    }
+
+    /// @inheritdoc IValidatorManagement
     function getActiveValidators() external view returns (ValidatorConsensusInfo[] memory) {
         uint256 length = _activeValidators.length;
         ValidatorConsensusInfo[] memory result = new ValidatorConsensusInfo[](length);
