@@ -264,6 +264,11 @@ library Errors {
     /// @param stakePool The pool
     error NotActiveValidator(address stakePool);
 
+    /// @notice The stake pool was not in the validator set when the proposal was created
+    /// @param stakePool The pool
+    /// @param proposalId The proposal
+    error NotInProposalSnapshot(address stakePool, uint64 proposalId);
+
     /// @notice Voting power usage would overflow remaining power
     /// @param requested Voting power requested
     /// @param remaining Remaining voting power available

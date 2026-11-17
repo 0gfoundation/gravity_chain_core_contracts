@@ -595,6 +595,19 @@ contract ReconfigurationTest is Test {
         assertEq(Reconfiguration(SystemAddresses.RECONFIGURATION).currentEpoch(), 2);
     }
 
+    /// A distributor that burns all the gas it gets still leaves the transition enough to finish.
+    function test_gasBurningDistributorDoesNotBlockTransition() public {
+        vm.etch(SystemAddresses.REWARD_DISTRIBUTOR, address(new GasBurningRewardDistributor()).code);
+        _initializeReconfiguration();
+
+        _advanceTime(TWO_HOURS + 1);
+        _startTransition();
+        uint256 before = gasleft();
+        _finishTransition("");
+        assertEq(Reconfiguration(SystemAddresses.RECONFIGURATION).currentEpoch(), 2);
+        assertLt(before - gasleft(), 30_000_000, "fits the per-block system transaction");
+    }
+
     /// The distributor runs while the closing epoch's state is in place: before configs are applied
     /// and before the validator manager moves to the next epoch.
     function test_rewardDistributionRunsBeforeEpochAdvances() public {
@@ -976,5 +989,11 @@ contract EpochProbe {
         calls++;
         seenEpoch = Reconfiguration(SystemAddresses.RECONFIGURATION).currentEpoch();
         seenValidatorManagerEpoch = MockValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getCurrentEpoch();
+    }
+}
+
+contract GasBurningRewardDistributor {
+    function distributeEpochRewards() external pure {
+        while (true) { }
     }
 }

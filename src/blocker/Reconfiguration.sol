@@ -30,6 +30,11 @@ import { RewardDistributor } from "./RewardDistributor.sol";
 ///      Epoch interval is configured via EpochConfig contract.
 ///      Entry points: checkAndStartTransition() from Blocker, finishTransition() from consensus/governance.
 contract Reconfiguration is IReconfiguration {
+    /// @notice Gas available to the block reward distribution at each epoch transition
+    /// @dev Paying a full validator set (maxValidatorSetSize) needs a fraction of this; the cap
+    ///      bounds what a failing distribution can take from the per-block system transaction.
+    uint256 public constant REWARD_DISTRIBUTION_GAS = 10_000_000;
+
     // ========================================================================
     // CONSTANTS
     // ========================================================================
@@ -283,8 +288,11 @@ contract Reconfiguration is IReconfiguration {
         //    performance tracker is reset. A failure here must never stop the epoch transition, so
         //    this is a low-level call: unlike a typed or try/catch call, it does not revert the
         //    caller when the distributor has no code.
-        (bool rewarded, bytes memory reason) =
-            SystemAddresses.REWARD_DISTRIBUTOR.call(abi.encodeCall(RewardDistributor.distributeEpochRewards, ()));
+        //    The distributor gets at most REWARD_DISTRIBUTION_GAS, so even a distributor that burns
+        //    all of its gas leaves the rest of the transition enough to complete.
+        (bool rewarded, bytes memory reason) = SystemAddresses.REWARD_DISTRIBUTOR.call{ gas: REWARD_DISTRIBUTION_GAS }(
+            abi.encodeCall(RewardDistributor.distributeEpochRewards, ())
+        );
         if (!rewarded) {
             emit RewardDistributionFailed(currentEpoch, reason);
         }

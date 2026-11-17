@@ -11,6 +11,8 @@ import { IRewardConfig } from "./IRewardConfig.sol";
 /// @dev Initialized at genesis, updatable via governance (GOVERNANCE).
 ///      Uses the pending config pattern: a new schedule is queued and applied at the next epoch
 ///      boundary, after the closing epoch's rewards were paid with the old one.
+///      Decay is always counted from when rewards started (RewardDistributor.startTimeMicros), also
+///      for a schedule set later: a new schedule takes effect already decayed for the time elapsed.
 contract RewardConfig is IRewardConfig {
     // ========================================================================
     // CONSTANTS
@@ -98,7 +100,8 @@ contract RewardConfig is IRewardConfig {
     ) external view returns (uint64) {
         _requireInitialized();
         RewardSchedule memory s = _schedule;
-        uint64 rate = s.initialRateBps;
+        // uint256: rate * decayNumerator can exceed uint64 for large numerator/denominator pairs
+        uint256 rate = s.initialRateBps;
         if (s.decayNumerator < s.decayDenominator) {
             uint64 periods = elapsedMicros / s.decayPeriodMicros;
             while (periods > 0 && rate > s.floorRateBps) {
@@ -106,7 +109,7 @@ contract RewardConfig is IRewardConfig {
                 periods--;
             }
         }
-        return rate < s.floorRateBps ? s.floorRateBps : rate;
+        return rate < s.floorRateBps ? s.floorRateBps : uint64(rate);
     }
 
     // ========================================================================
@@ -130,11 +133,11 @@ contract RewardConfig is IRewardConfig {
     // ========================================================================
 
     /// @notice Apply the pending schedule at the epoch boundary
-    /// @dev No-op without a pending schedule
+    /// @dev No-op without a pending schedule, and before initialization (so an uninitialized
+    ///      RewardConfig never blocks an epoch transition)
     function applyPendingConfig() external {
         requireAllowed(SystemAddresses.RECONFIGURATION);
-        _requireInitialized();
-        if (!hasPendingConfig) {
+        if (!_initialized || !hasPendingConfig) {
             return;
         }
         _schedule = _pendingSchedule;

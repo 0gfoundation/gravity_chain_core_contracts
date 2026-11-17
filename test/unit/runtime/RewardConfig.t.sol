@@ -80,6 +80,19 @@ contract RewardConfigTest is Test {
         assertEq(config.rateBpsAt(0), 0);
     }
 
+    /// Large numerator/denominator pairs (e.g. 1e18 fixed point) do not overflow.
+    function test_LargeDecayFactorDoesNotOverflow() public {
+        _init(IRewardConfig.RewardSchedule(2000, 0, 999_999_999_999_999_999, 1e18, DAY));
+        assertEq(config.rateBpsAt(DAY), 1999);
+        assertEq(config.rateBpsAt(100 * YEAR), 0);
+    }
+
+    function test_ApplyBeforeInitializeIsNoop() public {
+        vm.prank(SystemAddresses.RECONFIGURATION);
+        config.applyPendingConfig();
+        assertFalse(config.isInitialized());
+    }
+
     function test_RevertWhen_InvalidRate() public {
         vm.startPrank(SystemAddresses.GENESIS);
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidRewardRate.selector, 2001, 0, 2000));

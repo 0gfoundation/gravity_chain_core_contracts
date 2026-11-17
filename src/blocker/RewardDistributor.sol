@@ -44,6 +44,11 @@ contract RewardDistributor {
     /// @notice Native mint precompile function selector byte
     uint8 internal constant MINT_FUNCTION_ID = 0x01;
 
+    /// @notice Gas forwarded to each mint
+    /// @dev A failing precompile consumes all the gas it is given; the cap keeps one failed mint
+    ///      from using up the gas the rest of the distribution and the epoch transition need.
+    uint256 public constant MINT_GAS = 30_000;
+
     // ========================================================================
     // STATE
     // ========================================================================
@@ -146,8 +151,9 @@ contract RewardDistributor {
         address recipient,
         uint256 amount
     ) internal returns (bool) {
-        (bool ok, bytes memory ret) =
-            SystemAddresses.NATIVE_MINT_PRECOMPILE.call(abi.encodePacked(MINT_FUNCTION_ID, recipient, amount));
+        (bool ok, bytes memory ret) = SystemAddresses.NATIVE_MINT_PRECOMPILE.call{ gas: MINT_GAS }(
+            abi.encodePacked(MINT_FUNCTION_ID, recipient, amount)
+        );
         return ok && ret.length == 32 && abi.decode(ret, (bool));
     }
 }

@@ -8,7 +8,8 @@ import { SystemAddresses } from "../foundation/SystemAddresses.sol";
 import { Errors } from "../foundation/Errors.sol";
 import { IStaking } from "../staking/IStaking.sol";
 import { IValidatorManagement } from "../staking/IValidatorManagement.sol";
-import { ValidatorStatus } from "../foundation/Types.sol";
+import { ValidatorStatus, ValidatorConsensusInfo } from "../foundation/Types.sol";
+import { IValidatorConfig } from "../runtime/IValidatorConfig.sol";
 import { ITimestamp } from "../runtime/ITimestamp.sol";
 import { requireAllowed } from "../foundation/SystemAccessControl.sol";
 import { Ownable2Step, Ownable } from "@openzeppelin/access/Ownable2Step.sol";
@@ -20,9 +21,11 @@ import { EnumerableSet } from "@openzeppelin/utils/structs/EnumerableSet.sol";
 /// @dev Only stake pools of the current epoch's validator set take part: the pool's `voter` address
 ///      proposes and votes with the pool's validator voting power for the current epoch (its bond,
 ///      capped at maximumBond). Supports partial voting.
-///      A proposal passes once yes votes reach two thirds of the validator set's total voting power
-///      as of the proposal's creation (the BFT safety threshold), with more yes than no votes and at
-///      least `minVoteThreshold` votes cast. It can be resolved as soon as it passes; otherwise after
+///      A proposal snapshots the validator set and each validator's voting power at creation. Only
+///      validators in the snapshot that are still in the current set vote, each with at most its
+///      snapshot power. A proposal passes once yes votes reach two thirds of the snapshot total (the
+///      BFT safety threshold), with more yes than no votes and at least `minVoteThreshold` votes cast
+///      (capped at the snapshot total). It can be resolved as soon as it passes; otherwise after
 ///      its voting period.
 ///      Proposal execution is restricted to authorized executors managed by the owner.
 contract Governance is IGovernance, Ownable2Step {
@@ -68,6 +71,12 @@ contract Governance is IGovernance, Ownable2Step {
 
     /// @notice Total validator voting power when each proposal was created (the 2/3 base)
     mapping(uint64 => uint128) public proposalTotalVotingPower;
+
+    /// @notice Each validator's voting power when the proposal was created: proposalId => pool => power
+    /// @dev Only pools in this snapshot vote on the proposal, with at most this power. Votes can then
+    ///      never add up to more than the snapshot total, whatever happens to bonds and the validator
+    ///      set while the proposal is open.
+    mapping(uint64 => mapping(address => uint128)) public proposalVotingPowerSnapshot;
 
     // ========================================================================
     // CONSTRUCTOR
@@ -194,8 +203,11 @@ contract Governance is IGovernance, Ownable2Step {
         Proposal storage p
     ) internal view returns (bool) {
         uint256 yes = p.yesVotes;
-        return yes > p.noVotes && yes + p.noVotes >= p.minVoteThreshold
-            && yes * 3 >= uint256(proposalTotalVotingPower[p.id]) * 2;
+        uint256 total = proposalTotalVotingPower[p.id];
+        // A minimum vote threshold above the whole validator set could never be met, and no
+        // proposal could then lower it: cap it at the total.
+        uint256 threshold = p.minVoteThreshold < total ? p.minVoteThreshold : total;
+        return yes > p.noVotes && yes + p.noVotes >= threshold && yes * 3 >= total * 2;
     }
 
     /// @notice Verify caller is the pool's voter
@@ -277,8 +289,11 @@ contract Governance is IGovernance, Ownable2Step {
             revert Errors.ProposalNotFound(proposalId);
         }
 
-        // The pool's validator voting power for the current epoch (0 outside the validator set)
+        // The lower of the pool's power in the proposal's snapshot and its current validator voting
+        // power (0 outside the current validator set or outside the snapshot)
         uint256 poolPower = _validatorVotingPower(stakePool);
+        uint256 snapshotPower = proposalVotingPowerSnapshot[proposalId][stakePool];
+        if (snapshotPower < poolPower) poolPower = snapshotPower;
         // Clamp to uint128 max to prevent silent truncation
         if (poolPower > type(uint128).max) poolPower = type(uint128).max;
         uint128 used = usedVotingPower[stakePool][proposalId];
@@ -397,7 +412,13 @@ contract Governance is IGovernance, Ownable2Step {
         uint64 votingDuration = _config().votingDurationMicros();
         uint64 expirationTime = now_ + votingDuration;
 
+        // Voting power is capped at maximumBond: a requirement above it could never be met, and no
+        // proposal could then lower it.
         uint256 requiredStake = _config().requiredProposerStake();
+        uint256 maximumBond = IValidatorConfig(SystemAddresses.VALIDATOR_CONFIG).maximumBond();
+        if (requiredStake > maximumBond) {
+            requiredStake = maximumBond;
+        }
 
         if (votingPower < requiredStake) {
             revert Errors.InsufficientVotingPower(requiredStake, votingPower);
@@ -426,7 +447,16 @@ contract Governance is IGovernance, Ownable2Step {
             resolutionTime: 0
         });
 
-        uint256 totalPower = IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getTotalVotingPower();
+        // Snapshot the current epoch's validator set and voting power
+        ValidatorConsensusInfo[] memory validators =
+            IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getActiveValidators();
+        uint256 totalPower;
+        for (uint256 i = 0; i < validators.length; i++) {
+            uint256 power = validators[i].votingPower;
+            if (power > type(uint128).max) power = type(uint128).max;
+            proposalVotingPowerSnapshot[proposalId][validators[i].validator] = uint128(power);
+            totalPower += power;
+        }
         proposalTotalVotingPower[proposalId] = totalPower > type(uint128).max ? type(uint128).max : uint128(totalPower);
 
         emit ProposalCreated(proposalId, msg.sender, stakePool, executionHash, metadataUri);
@@ -504,8 +534,11 @@ contract Governance is IGovernance, Ownable2Step {
         // Verify caller is pool's voter
         _requireVoter(stakePool);
 
-        // Only validators of the current epoch vote
+        // Only validators of the current epoch that were in the set when the proposal was created vote
         _requireActiveValidator(stakePool);
+        if (proposalVotingPowerSnapshot[proposalId][stakePool] == 0) {
+            revert Errors.NotInProposalSnapshot(stakePool, proposalId);
+        }
 
         // Remaining voting power: the pool's current validator voting power minus what it used
         uint128 remaining = getRemainingVotingPower(stakePool, proposalId);

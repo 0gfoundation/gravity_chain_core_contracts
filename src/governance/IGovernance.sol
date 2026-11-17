@@ -75,7 +75,20 @@ interface IGovernance {
         uint64 proposalId
     ) external view returns (ProposalState);
 
+    /// @notice Total validator voting power in the proposal's snapshot (the two-thirds base)
+    function proposalTotalVotingPower(
+        uint64 proposalId
+    ) external view returns (uint128);
+
+    /// @notice A pool's voting power in the proposal's snapshot (0 if it was not in the validator set)
+    function proposalVotingPowerSnapshot(
+        uint64 proposalId,
+        address stakePool
+    ) external view returns (uint128);
+
     /// @notice Get the remaining voting power a pool can use on a proposal
+    /// @dev The lower of the pool's snapshot power and its current validator voting power, minus what
+    ///      it already used; 0 outside the current validator set or the proposal's snapshot.
     /// @param stakePool Address of the stake pool
     /// @param proposalId ID of the proposal
     /// @return Remaining voting power available
