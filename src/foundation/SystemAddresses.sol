@@ -70,6 +70,10 @@ library SystemAddresses {
     /// @dev Defines which on-demand request types the consensus engine supports
     address internal constant ON_DEMAND_ORACLE_TASK_CONFIG = address(0x0000000000000000000000000001625F100A);
 
+    /// @notice Block reward configuration contract
+    /// @dev Reward rate schedule (initial rate, yearly decay, floor), applied at epoch boundaries
+    address internal constant REWARD_CONFIG = address(0x0000000000000000000000000001625F100B);
+
     // ==================== Staking & Validator (0x1625F2xxx) ====================
 
     /// @notice Governance staking contract
@@ -95,6 +99,10 @@ library SystemAddresses {
     /// @notice Validator performance tracker
     /// @dev Tracks successful/failed proposals per validator per epoch (Aptos: ValidatorPerformance)
     address internal constant PERFORMANCE_TRACKER = address(0x0000000000000000000000000001625F2005);
+
+    /// @notice Block reward distributor
+    /// @dev Pays each validator its reward for the closing epoch at every epoch transition
+    address internal constant REWARD_DISTRIBUTOR = address(0x0000000000000000000000000001625F2006);
 
     // ==================== Governance (0x1625F3xxx) ====================
 

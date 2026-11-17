@@ -71,6 +71,8 @@ pub const ORACLE_TASK_CONFIG_ADDR: Address = address!("0000000000000000000000000
 
 /// On-demand oracle task configuration contract
 pub const ON_DEMAND_ORACLE_TASK_CONFIG_ADDR: Address = address!("00000000000000000000000000000001625F100A");
+/// Block reward schedule
+pub const REWARD_CONFIG_ADDR: Address = address!("00000000000000000000000000000001625F100B");
 
 // Staking & Validator (0x1625F2xxx)
 /// Governance staking contract
@@ -90,6 +92,8 @@ pub const BLOCK_ADDR: Address = address!("00000000000000000000000000000001625F20
 
 /// Validator performance tracker contract
 pub const PERFORMANCE_TRACKER_ADDR: Address = address!("00000000000000000000000000000001625F2005");
+/// Block reward distributor
+pub const REWARD_DISTRIBUTOR_ADDR: Address = address!("00000000000000000000000000000001625F2006");
 
 // Governance (0x1625F3xxx)
 /// Governance contract
@@ -114,7 +118,7 @@ pub const NATIVE_MINT_PRECOMPILE_ADDR: Address = address!("000000000000000000000
 // Note: StakePool is created dynamically during Genesis.initialize, not pre-deployed
 // ============================================================================
 
-pub const CONTRACTS: [(&str, Address); 21] = [
+pub const CONTRACTS: [(&str, Address); 23] = [
     ("Genesis", GENESIS_ADDR),
     ("Reconfiguration", RECONFIGURATION_ADDR),
     ("StakingConfig", STAKE_CONFIG_ADDR),
@@ -136,6 +140,8 @@ pub const CONTRACTS: [(&str, Address); 21] = [
     ("ExecutionConfig", EXECUTION_CONFIG_ADDR),
     ("OracleTaskConfig", ORACLE_TASK_CONFIG_ADDR),
     ("OnDemandOracleTaskConfig", ON_DEMAND_ORACLE_TASK_CONFIG_ADDR),
+    ("RewardConfig", REWARD_CONFIG_ADDR),
+    ("RewardDistributor", REWARD_DISTRIBUTOR_ADDR),
 ];
 
 pub const SYSTEM_ACCOUNT_INFO: AccountInfo = AccountInfo {

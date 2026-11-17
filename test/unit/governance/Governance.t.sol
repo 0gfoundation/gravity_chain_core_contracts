@@ -10,23 +10,69 @@ import { StakePool } from "src/staking/StakePool.sol";
 import { IStakePool } from "src/staking/IStakePool.sol";
 import { Timestamp } from "src/runtime/Timestamp.sol";
 import { StakingConfig } from "src/runtime/StakingConfig.sol";
-import { Proposal, ProposalState, ValidatorStatus } from "src/foundation/Types.sol";
+import { Proposal, ProposalState, ValidatorStatus, ValidatorRecord } from "src/foundation/Types.sol";
 import { SystemAddresses } from "src/foundation/SystemAddresses.sol";
 import { Errors } from "src/foundation/Errors.sol";
 import { Ownable } from "@openzeppelin/access/Ownable.sol";
 
-/// @notice Mock ValidatorManagement for testing - all pools are non-validators
+/// @notice Mock ValidatorManagement for testing
+/// @dev Toward Governance (the only caller that is SystemAddresses.GOVERNANCE), every stake pool is
+///      an ACTIVE validator whose bond is its current voting power, unless a test marks it otherwise.
+///      Toward everything else (e.g. StakePool's unstake bond check) pools are non-validators.
+///      Total voting power is 0 unless a test sets it; 0 leaves the two-thirds rule trivially met,
+///      so tests that are not about it keep their meaning.
 contract MockValidatorManagement {
+    mapping(address => bool) public notValidator;
+    mapping(address => ValidatorStatus) public statusOverride;
+    mapping(address => bool) public hasStatusOverride;
+    uint256 public totalVotingPower;
+
+    function setNotValidator(
+        address pool,
+        bool value
+    ) external {
+        notValidator[pool] = value;
+    }
+
+    function setStatus(
+        address pool,
+        ValidatorStatus status
+    ) external {
+        statusOverride[pool] = status;
+        hasStatusOverride[pool] = true;
+    }
+
+    function setTotalVotingPower(
+        uint256 value
+    ) external {
+        totalVotingPower = value;
+    }
+
     function isValidator(
-        address
-    ) external pure returns (bool) {
-        return false;
+        address pool
+    ) external view returns (bool) {
+        return msg.sender == SystemAddresses.GOVERNANCE && !notValidator[pool];
     }
 
     function getValidatorStatus(
-        address
-    ) external pure returns (ValidatorStatus) {
-        return ValidatorStatus.INACTIVE;
+        address pool
+    ) external view returns (ValidatorStatus) {
+        if (msg.sender != SystemAddresses.GOVERNANCE) {
+            return ValidatorStatus.INACTIVE;
+        }
+        return hasStatusOverride[pool] ? statusOverride[pool] : ValidatorStatus.ACTIVE;
+    }
+
+    function getValidator(
+        address pool
+    ) external view returns (ValidatorRecord memory record) {
+        record.validator = pool;
+        record.status = ValidatorStatus.ACTIVE;
+        record.bond = IStakePool(pool).getVotingPowerNow();
+    }
+
+    function getTotalVotingPower() external view returns (uint256) {
+        return totalVotingPower;
     }
 }
 
@@ -186,6 +232,20 @@ contract GovernanceTest is Test {
         datas[0] = data;
     }
 
+    function _vm() internal pure returns (MockValidatorManagement) {
+        return MockValidatorManagement(SystemAddresses.VALIDATOR_MANAGER);
+    }
+
+    function _propose(
+        address proposer,
+        address pool
+    ) internal returns (uint64) {
+        bytes memory data = abi.encodeWithSignature("setValue(uint256)", 42);
+        (address[] memory targets, bytes[] memory datas) = _toArrays(address(mockTarget), data);
+        vm.prank(proposer);
+        return governance.createProposal(pool, targets, datas, "ipfs://test");
+    }
+
     function _advanceTime(
         uint64 micros
     ) internal {
@@ -259,19 +319,25 @@ contract GovernanceTest is Test {
         governance.createProposal(pool, targets, datas, "ipfs://test");
     }
 
-    function test_RevertWhen_CreateProposalInsufficientLockup() public {
-        // Create pool with sufficient stake
+    function test_RevertWhen_CreateProposalNotValidator() public {
         address pool = _createStakePool(alice, 100 ether);
-
-        // Advance time so lockup expires before voting would end
-        _advanceTime(LOCKUP_DURATION_MICROS - VOTING_DURATION_MICROS + 1);
+        _vm().setNotValidator(pool, true);
 
         (address[] memory targets, bytes[] memory datas) = _toArrays(address(mockTarget), "");
 
-        // With the new voting power model, insufficient lockup means 0 voting power at expiration
-        // Since lockup expires before proposal expiration, voting power at expiration = 0
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Errors.InsufficientVotingPower.selector, REQUIRED_PROPOSER_STAKE, 0));
+        vm.expectRevert(abi.encodeWithSelector(Errors.NotActiveValidator.selector, pool));
+        governance.createProposal(pool, targets, datas, "ipfs://test");
+    }
+
+    function test_RevertWhen_CreateProposalPendingActiveValidator() public {
+        address pool = _createStakePool(alice, 100 ether);
+        _vm().setStatus(pool, ValidatorStatus.PENDING_ACTIVE);
+
+        (address[] memory targets, bytes[] memory datas) = _toArrays(address(mockTarget), "");
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Errors.NotActiveValidator.selector, pool));
         governance.createProposal(pool, targets, datas, "ipfs://test");
     }
 
@@ -1435,6 +1501,10 @@ contract GovernanceTest is Test {
         vm.prank(alice);
         address alicePool = staking.createPool{ value: 100 ether }(alice, alice, alice, alice, lockedUntil);
 
+        // Keep alice's 100 ether below two thirds of the total, so the proposal cannot be resolved
+        // early and only the voting period gates resolution here.
+        _vm().setTotalVotingPower(1000 ether);
+
         (address[] memory targets, bytes[] memory datas) = _toArrays(address(mockTarget), "");
 
         vm.prank(alice);
@@ -1672,6 +1742,112 @@ contract GovernanceTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(Errors.ProposalArrayLengthMismatch.selector, 2, 1));
         governance.execute(proposalId, mismatchTargets, datas);
+    }
+
+    // ========================================================================
+    // VALIDATOR-ONLY PARTICIPATION AND TWO-THIRDS RULE
+    // ========================================================================
+
+    function test_RevertWhen_VoteNotValidator() public {
+        address pool1 = _createStakePool(alice, 100 ether);
+        address pool2 = _createStakePool(bob, 100 ether);
+        uint64 proposalId = _propose(alice, pool1);
+        _vm().setNotValidator(pool2, true);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Errors.NotActiveValidator.selector, pool2));
+        governance.vote(pool2, proposalId, 100 ether, true);
+    }
+
+    function test_RevertWhen_VoteInactiveValidator() public {
+        address pool1 = _createStakePool(alice, 100 ether);
+        address pool2 = _createStakePool(bob, 100 ether);
+        uint64 proposalId = _propose(alice, pool1);
+        _vm().setStatus(pool2, ValidatorStatus.INACTIVE);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Errors.NotActiveValidator.selector, pool2));
+        governance.vote(pool2, proposalId, 100 ether, true);
+    }
+
+    function test_PendingInactiveValidatorVotes() public {
+        address pool1 = _createStakePool(alice, 100 ether);
+        address pool2 = _createStakePool(bob, 100 ether);
+        uint64 proposalId = _propose(alice, pool1);
+        // Still in the current epoch's set until the epoch ends
+        _vm().setStatus(pool2, ValidatorStatus.PENDING_INACTIVE);
+
+        vm.prank(bob);
+        governance.vote(pool2, proposalId, 100 ether, true);
+        assertEq(governance.getProposal(proposalId).yesVotes, 100 ether);
+    }
+
+    function test_TotalVotingPowerIsSnapshotAtCreation() public {
+        address pool = _createStakePool(alice, 100 ether);
+        _vm().setTotalVotingPower(300 ether);
+        uint64 proposalId = _propose(alice, pool);
+        _vm().setTotalVotingPower(900 ether);
+        assertEq(governance.proposalTotalVotingPower(proposalId), 300 ether);
+    }
+
+    function test_FailsBelowTwoThirdsOfTotal() public {
+        address pool1 = _createStakePool(alice, 100 ether);
+        address pool2 = _createStakePool(bob, 99 ether);
+        // yes = 199 < 2/3 * 300 = 200
+        _vm().setTotalVotingPower(300 ether);
+        uint64 proposalId = _propose(alice, pool1);
+
+        vm.prank(alice);
+        governance.vote(pool1, proposalId, type(uint128).max, true);
+        vm.prank(bob);
+        governance.vote(pool2, proposalId, type(uint128).max, true);
+
+        assertFalse(governance.canResolve(proposalId), "no early resolution below two thirds");
+        _advanceTime(VOTING_DURATION_MICROS + 1);
+        governance.resolve(proposalId);
+        assertEq(uint8(governance.getProposalState(proposalId)), uint8(ProposalState.FAILED));
+    }
+
+    function test_EarlyResolveAtTwoThirdsOfTotal() public {
+        address pool1 = _createStakePool(alice, 100 ether);
+        address pool2 = _createStakePool(bob, 100 ether);
+        // yes = 200 = 2/3 * 300
+        _vm().setTotalVotingPower(300 ether);
+        uint64 proposalId = _propose(alice, pool1);
+
+        vm.prank(alice);
+        governance.vote(pool1, proposalId, type(uint128).max, true);
+        assertFalse(governance.canResolve(proposalId));
+        vm.prank(bob);
+        governance.vote(pool2, proposalId, type(uint128).max, true);
+
+        // Not in the same timestamp as the last vote
+        assertFalse(governance.canResolve(proposalId));
+        vm.expectRevert();
+        governance.resolve(proposalId);
+
+        _advanceTime(1);
+        assertTrue(governance.canResolve(proposalId));
+        governance.resolve(proposalId);
+        assertEq(uint8(governance.getProposalState(proposalId)), uint8(ProposalState.SUCCEEDED));
+
+        (address[] memory targets, bytes[] memory datas) =
+            _toArrays(address(mockTarget), abi.encodeWithSignature("setValue(uint256)", 42));
+        governance.execute(proposalId, targets, datas);
+        assertEq(mockTarget.value(), 42);
+    }
+
+    function test_RevertWhen_ResolveEarlyBelowTwoThirds() public {
+        address pool1 = _createStakePool(alice, 100 ether);
+        _vm().setTotalVotingPower(300 ether);
+        uint64 proposalId = _propose(alice, pool1);
+        vm.prank(alice);
+        governance.vote(pool1, proposalId, type(uint128).max, true);
+        _advanceTime(1);
+
+        Proposal memory p = governance.getProposal(proposalId);
+        vm.expectRevert(abi.encodeWithSelector(Errors.VotingPeriodNotEnded.selector, p.expirationTime));
+        governance.resolve(proposalId);
     }
 }
 

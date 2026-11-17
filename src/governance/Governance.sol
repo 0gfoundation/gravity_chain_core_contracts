@@ -7,6 +7,8 @@ import { Proposal, ProposalState } from "../foundation/Types.sol";
 import { SystemAddresses } from "../foundation/SystemAddresses.sol";
 import { Errors } from "../foundation/Errors.sol";
 import { IStaking } from "../staking/IStaking.sol";
+import { IValidatorManagement } from "../staking/IValidatorManagement.sol";
+import { ValidatorStatus } from "../foundation/Types.sol";
 import { ITimestamp } from "../runtime/ITimestamp.sol";
 import { requireAllowed } from "../foundation/SystemAccessControl.sol";
 import { Ownable2Step, Ownable } from "@openzeppelin/access/Ownable2Step.sol";
@@ -15,9 +17,13 @@ import { EnumerableSet } from "@openzeppelin/utils/structs/EnumerableSet.sol";
 /// @title Governance
 /// @author Gravity Team
 /// @notice On-chain governance for Gravity blockchain
-/// @dev Voting power comes from StakePools via the Staking factory.
-///      The pool's `voter` address casts votes using the pool's voting power.
-///      Supports partial voting.
+/// @dev Only stake pools of the current epoch's validator set take part: the pool's `voter` address
+///      proposes and votes with the pool's validator voting power for the current epoch (its bond,
+///      capped at maximumBond). Supports partial voting.
+///      A proposal passes once yes votes reach two thirds of the validator set's total voting power
+///      as of the proposal's creation (the BFT safety threshold), with more yes than no votes and at
+///      least `minVoteThreshold` votes cast. It can be resolved as soon as it passes; otherwise after
+///      its voting period.
 ///      Proposal execution is restricted to authorized executors managed by the owner.
 contract Governance is IGovernance, Ownable2Step {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -59,6 +65,9 @@ contract Governance is IGovernance, Ownable2Step {
     /// @dev Predeployed instances skip the constructor, so ownership must be set
     ///      post-deploy via `initialize(address)`. This flag gates that path.
     bool private _initialized;
+
+    /// @notice Total validator voting power when each proposal was created (the 2/3 base)
+    mapping(uint64 => uint128) public proposalTotalVotingPower;
 
     // ========================================================================
     // CONSTRUCTOR
@@ -154,6 +163,41 @@ contract Governance is IGovernance, Ownable2Step {
         return IStaking(SystemAddresses.STAKING);
     }
 
+    /// @notice Voting power of a pool in the current epoch's validator set, 0 if it is not in it
+    /// @dev ACTIVE and PENDING_INACTIVE validators are both in the current epoch's set.
+    function _validatorVotingPower(
+        address stakePool
+    ) internal view returns (uint256) {
+        IValidatorManagement vm = IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER);
+        if (!vm.isValidator(stakePool)) {
+            return 0;
+        }
+        ValidatorStatus status = vm.getValidatorStatus(stakePool);
+        if (status != ValidatorStatus.ACTIVE && status != ValidatorStatus.PENDING_INACTIVE) {
+            return 0;
+        }
+        return vm.getValidator(stakePool).bond;
+    }
+
+    /// @notice Revert unless the pool is in the current epoch's validator set
+    function _requireActiveValidator(
+        address stakePool
+    ) internal view returns (uint256 power) {
+        power = _validatorVotingPower(stakePool);
+        if (power == 0) {
+            revert Errors.NotActiveValidator(stakePool);
+        }
+    }
+
+    /// @notice Whether the votes so far pass the proposal
+    function _passes(
+        Proposal storage p
+    ) internal view returns (bool) {
+        uint256 yes = p.yesVotes;
+        return yes > p.noVotes && yes + p.noVotes >= p.minVoteThreshold
+            && yes * 3 >= uint256(proposalTotalVotingPower[p.id]) * 2;
+    }
+
     /// @notice Verify caller is the pool's voter
     function _requireVoter(
         address stakePool
@@ -204,7 +248,7 @@ contract Governance is IGovernance, Ownable2Step {
         // Check if resolved
         if (p.isResolved) {
             // Determine if it passed
-            if (p.yesVotes > p.noVotes && p.yesVotes + p.noVotes >= p.minVoteThreshold) {
+            if (_passes(p)) {
                 return ProposalState.SUCCEEDED;
             }
             return ProposalState.FAILED;
@@ -217,7 +261,7 @@ contract Governance is IGovernance, Ownable2Step {
         }
 
         // Voting ended but not resolved - determine outcome
-        if (p.yesVotes > p.noVotes && p.yesVotes + p.noVotes >= p.minVoteThreshold) {
+        if (_passes(p)) {
             return ProposalState.SUCCEEDED;
         }
         return ProposalState.FAILED;
@@ -233,8 +277,8 @@ contract Governance is IGovernance, Ownable2Step {
             revert Errors.ProposalNotFound(proposalId);
         }
 
-        // Get voting power at proposal's expiration time
-        uint256 poolPower = _staking().getPoolVotingPower(stakePool, p.expirationTime);
+        // The pool's validator voting power for the current epoch (0 outside the validator set)
+        uint256 poolPower = _validatorVotingPower(stakePool);
         // Clamp to uint128 max to prevent silent truncation
         if (poolPower > type(uint128).max) poolPower = type(uint128).max;
         uint128 used = usedVotingPower[stakePool][proposalId];
@@ -256,8 +300,8 @@ contract Governance is IGovernance, Ownable2Step {
 
         uint64 now_ = _now();
 
-        // Can resolve if voting period ended
-        if (now_ < p.expirationTime) {
+        // Can resolve once the voting period ended, or earlier once the proposal passes
+        if (now_ < p.expirationTime && !_passes(p)) {
             return false;
         }
 
@@ -345,14 +389,14 @@ contract Governance is IGovernance, Ownable2Step {
         // Verify caller is pool's voter
         _requireVoter(stakePool);
 
+        // Only validators of the current epoch propose
+        uint256 votingPower = _requireActiveValidator(stakePool);
+
         // Calculate proposal expiration time
         uint64 now_ = _now();
         uint64 votingDuration = _config().votingDurationMicros();
         uint64 expirationTime = now_ + votingDuration;
 
-        // Get pool's voting power at expiration time
-        // This inherently checks that lockup covers the voting period
-        uint256 votingPower = _staking().getPoolVotingPower(stakePool, expirationTime);
         uint256 requiredStake = _config().requiredProposerStake();
 
         if (votingPower < requiredStake) {
@@ -381,6 +425,9 @@ contract Governance is IGovernance, Ownable2Step {
             isResolved: false,
             resolutionTime: 0
         });
+
+        uint256 totalPower = IValidatorManagement(SystemAddresses.VALIDATOR_MANAGER).getTotalVotingPower();
+        proposalTotalVotingPower[proposalId] = totalPower > type(uint128).max ? type(uint128).max : uint128(totalPower);
 
         emit ProposalCreated(proposalId, msg.sender, stakePool, executionHash, metadataUri);
     }
@@ -457,8 +504,10 @@ contract Governance is IGovernance, Ownable2Step {
         // Verify caller is pool's voter
         _requireVoter(stakePool);
 
-        // Calculate remaining voting power (uses voting power at expiration time,
-        // which inherently checks that lockup covers the voting period)
+        // Only validators of the current epoch vote
+        _requireActiveValidator(stakePool);
+
+        // Remaining voting power: the pool's current validator voting power minus what it used
         uint128 remaining = getRemainingVotingPower(stakePool, proposalId);
 
         // Cap voting power at remaining (similar to Aptos's min(voting_power, staking_pool_voting_power))
@@ -506,8 +555,8 @@ contract Governance is IGovernance, Ownable2Step {
 
         uint64 now_ = _now();
 
-        // Check voting period has ended
-        if (now_ < p.expirationTime) {
+        // Check voting period has ended, unless the proposal already passes
+        if (now_ < p.expirationTime && !_passes(p)) {
             revert Errors.VotingPeriodNotEnded(p.expirationTime);
         }
 

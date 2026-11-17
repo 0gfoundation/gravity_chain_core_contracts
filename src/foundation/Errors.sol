@@ -260,6 +260,10 @@ library Errors {
     /// @param actual Actual caller address
     error NotDelegatedVoter(address expected, address actual);
 
+    /// @notice The stake pool is not in the current epoch's validator set
+    /// @param stakePool The pool
+    error NotActiveValidator(address stakePool);
+
     /// @notice Voting power usage would overflow remaining power
     /// @param requested Voting power requested
     /// @param remaining Remaining voting power available
@@ -584,6 +588,28 @@ library Errors {
 
     /// @notice Proposed role address is the same as the current holder
     error RoleAlreadySet();
+
+    // ========================================================================
+    // REWARD ERRORS
+    // ========================================================================
+
+    /// @notice RewardConfig has already been initialized
+    error RewardConfigAlreadyInitialized();
+
+    /// @notice RewardConfig has not been initialized
+    error RewardConfigNotInitialized();
+
+    /// @notice Reward rate parameters are out of range
+    /// @param initialRateBps Initial yearly rate (basis points)
+    /// @param floorRateBps Floor yearly rate (basis points)
+    /// @param maxRateBps Largest allowed yearly rate (basis points)
+    error InvalidRewardRate(uint64 initialRateBps, uint64 floorRateBps, uint64 maxRateBps);
+
+    /// @notice Reward decay parameters are out of range
+    /// @param numerator Decay factor numerator
+    /// @param denominator Decay factor denominator
+    /// @param periodMicros Decay period (microseconds)
+    error InvalidRewardDecay(uint64 numerator, uint64 denominator, uint64 periodMicros);
 
     // ========================================================================
     // GENERAL ERRORS

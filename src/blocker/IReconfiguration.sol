@@ -42,6 +42,11 @@ interface IReconfiguration {
         uint64 indexed newEpoch, ValidatorConsensusInfo[] validatorSet, uint256 totalVotingPower, uint64 transitionTime
     );
 
+    /// @notice Emitted when paying the closing epoch's block rewards failed; the transition went on
+    /// @param epoch The closing epoch
+    /// @param reason Revert data from the reward distributor
+    event RewardDistributionFailed(uint64 indexed epoch, bytes reason);
+
     // ========================================================================
     // INITIALIZATION
     // ========================================================================

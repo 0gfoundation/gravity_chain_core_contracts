@@ -8,6 +8,8 @@ import { Timestamp } from "../../../src/runtime/Timestamp.sol";
 import { DKG } from "../../../src/runtime/DKG.sol";
 import { RandomnessConfig } from "../../../src/runtime/RandomnessConfig.sol";
 import { EpochConfig } from "../../../src/runtime/EpochConfig.sol";
+import { RewardConfig } from "src/runtime/RewardConfig.sol";
+import { IRewardConfig } from "src/runtime/IRewardConfig.sol";
 import { ConsensusConfig } from "../../../src/runtime/ConsensusConfig.sol";
 import { ExecutionConfig } from "../../../src/runtime/ExecutionConfig.sol";
 import { ValidatorConfig } from "../../../src/runtime/ValidatorConfig.sol";
@@ -127,6 +129,12 @@ contract BlockerTest is Test {
         // Initialize EpochConfig
         vm.prank(SystemAddresses.GENESIS);
         EpochConfig(SystemAddresses.EPOCH_CONFIG).initialize(TWO_HOURS);
+
+        // Reward schedule (rate 0: these tests are not about rewards)
+        vm.etch(SystemAddresses.REWARD_CONFIG, address(new RewardConfig()).code);
+        vm.prank(SystemAddresses.GENESIS);
+        RewardConfig(SystemAddresses.REWARD_CONFIG)
+            .initialize(IRewardConfig.RewardSchedule(0, 0, 1, 1, uint64(1 days) * 1_000_000));
 
         // Initialize RandomnessConfig
         vm.prank(SystemAddresses.GENESIS);
