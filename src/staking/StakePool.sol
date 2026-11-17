@@ -34,7 +34,10 @@ contract StakePool is IStakePool, Ownable2Step, ReentrancyGuard {
     /// @notice Maximum allowed lockup duration (4 years in microseconds)
     uint64 public constant MAX_LOCKUP_DURATION = uint64(4 * 365 days) * 1_000_000;
 
-    /// @notice Maximum number of pending withdrawal buckets
+    /// @notice Maximum number of unclaimed pending withdrawal buckets
+    /// @dev Fully claimed buckets do not count: an active validator's lockup moves forward every
+    ///      epoch, so each unstake opens a new bucket, and a lifetime cap would eventually stop the
+    ///      pool from ever unstaking again.
     uint256 public constant MAX_PENDING_BUCKETS = 1000;
 
     /// @notice Minimum allowed role change delay (cannot set roleChangeDelay below this)
@@ -143,11 +146,15 @@ contract StakePool is IStakePool, Ownable2Step, ReentrancyGuard {
     ) payable Ownable(_owner) {
         FACTORY = msg.sender;
 
-        // Validate lockedUntil >= now + minLockup
+        // Validate now + minLockup <= lockedUntil <= now + MAX_LOCKUP_DURATION. The chain clock is 0
+        // at genesis (pools created by Genesis), where only the lower bound applies.
         uint64 now_ = ITimestamp(SystemAddresses.TIMESTAMP).nowMicroseconds();
         uint64 minLockup = IStakingConfig(SystemAddresses.STAKE_CONFIG).lockupDurationMicros();
         if (_lockedUntil < now_ + minLockup) {
             revert Errors.LockupDurationTooShort(_lockedUntil, now_ + minLockup);
+        }
+        if (now_ != 0 && _lockedUntil > now_ + MAX_LOCKUP_DURATION) {
+            revert Errors.ExcessiveLockupDuration(_lockedUntil - now_, MAX_LOCKUP_DURATION);
         }
 
         staker = _staker;
@@ -664,8 +671,9 @@ contract StakePool is IStakePool, Ownable2Step, ReentrancyGuard {
                 lastBucket.cumulativeAmount += amount;
             } else if (lastBucket.lockedUntil < bucketLockedUntil) {
                 // Append new bucket (strictly increasing lockedUntil)
-                if (len >= MAX_PENDING_BUCKETS) {
-                    revert Errors.TooManyPendingBuckets(len, MAX_PENDING_BUCKETS);
+                uint256 unclaimed = len - _firstUnclaimedBucket();
+                if (unclaimed >= MAX_PENDING_BUCKETS) {
+                    revert Errors.TooManyPendingBuckets(unclaimed, MAX_PENDING_BUCKETS);
                 }
                 uint256 newCumulative = lastBucket.cumulativeAmount + amount;
                 _pendingBuckets.push(PendingBucket({ lockedUntil: bucketLockedUntil, cumulativeAmount: newCumulative }));
@@ -675,6 +683,23 @@ contract StakePool is IStakePool, Ownable2Step, ReentrancyGuard {
                 revert Errors.LockedUntilDecreased(lastBucket.lockedUntil, bucketLockedUntil);
             }
         }
+    }
+
+    /// @notice Index of the first bucket not fully claimed (the bucket count if all are claimed)
+    /// @dev Cumulative amounts strictly increase, so this is a binary search for the first bucket
+    ///      whose cumulative amount exceeds claimedAmount.
+    function _firstUnclaimedBucket() internal view returns (uint256) {
+        uint256 lo = 0;
+        uint256 hi = _pendingBuckets.length;
+        while (lo < hi) {
+            uint256 mid = (lo + hi) >> 1;
+            if (_pendingBuckets[mid].cumulativeAmount > claimedAmount) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
     }
 
     /// @notice Calculate effective stake at a given time using O(log n) binary search

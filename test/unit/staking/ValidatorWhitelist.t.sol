@@ -56,7 +56,8 @@ contract ValidatorWhitelistTest is Test {
     uint64 constant VOTING_POWER_INCREASE_LIMIT = 20;
     uint256 constant MAX_VALIDATOR_SET_SIZE = 100;
 
-    bytes constant CONSENSUS_POP = hex"abcdef1234567890";
+    bytes constant CONSENSUS_POP =
+        hex"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
     bytes constant NETWORK_ADDRESSES = hex"0102030405060708";
     bytes constant FULLNODE_ADDRESSES = hex"0807060504030201";
 

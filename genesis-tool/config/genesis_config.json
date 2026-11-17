@@ -39,8 +39,8 @@
   "executionConfig": "0x00",
 
   "randomnessConfig": {
-    "_comment": "DKG V2 ENABLED for staged launch — exercise DKG path end-to-end. Thresholds are standard halves/two-thirds of 2^64.",
-    "variant": 1,
+    "_comment": "Off: this chain's execution layer does not run the DKG, so V2 would stall the first epoch change. Thresholds are kept for reference.",
+    "variant": 0,
     "configV2": {
       "secrecyThreshold": 9223372036854775808,
       "reconstructionThreshold": 12297829382473034410,

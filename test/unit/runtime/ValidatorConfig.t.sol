@@ -30,7 +30,7 @@ contract ValidatorConfigTest is Test {
 
     function test_Constants() public view {
         assertEq(config.MAX_VOTING_POWER_INCREASE_LIMIT(), 50);
-        assertEq(config.MAX_VALIDATOR_SET_SIZE(), 65536);
+        assertEq(config.MAX_VALIDATOR_SET_SIZE(), 250);
     }
 
     // ========================================================================
@@ -355,7 +355,7 @@ contract ValidatorConfigTest is Test {
         maxBond = bound(maxBond, minBond, type(uint128).max);
         unbondingDelay = uint64(bound(unbondingDelay, 1, config.MAX_UNBONDING_DELAY()));
         votingPowerLimit = uint64(bound(votingPowerLimit, 1, 50));
-        maxValidators = bound(maxValidators, 1, 65536);
+        maxValidators = bound(maxValidators, 1, config.MAX_VALIDATOR_SET_SIZE());
 
         vm.prank(SystemAddresses.GENESIS);
         config.initialize(minBond, maxBond, unbondingDelay, allowChanges, votingPowerLimit, maxValidators, false, 0);
@@ -383,7 +383,7 @@ contract ValidatorConfigTest is Test {
         maxBond = bound(maxBond, minBond, type(uint128).max);
         unbondingDelay = uint64(bound(unbondingDelay, 1, config.MAX_UNBONDING_DELAY()));
         votingPowerLimit = uint64(bound(votingPowerLimit, 1, 50));
-        maxValidators = bound(maxValidators, 1, 65536);
+        maxValidators = bound(maxValidators, 1, config.MAX_VALIDATOR_SET_SIZE());
 
         vm.prank(SystemAddresses.GOVERNANCE);
         config.setForNextEpoch(

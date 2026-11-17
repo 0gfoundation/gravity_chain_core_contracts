@@ -75,7 +75,8 @@ contract ConsensusEngineFlowTest is Test {
     // Sample consensus key data
     bytes constant CONSENSUS_PUBKEY =
         hex"9112af1a4ef4038dfe24c5371e40b5bcfce16146bfc4ab819244ce57f5d002c4c3f06eca7273e733c0f78aada8c13deb";
-    bytes constant CONSENSUS_POP = hex"abcdef1234567890";
+    bytes constant CONSENSUS_POP =
+        hex"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
     bytes constant NETWORK_ADDRESSES = hex"0102030405060708";
     bytes constant FULLNODE_ADDRESSES = hex"0807060504030201";
     bytes constant SAMPLE_DKG_TRANSCRIPT = hex"deadbeef1234567890abcdef";

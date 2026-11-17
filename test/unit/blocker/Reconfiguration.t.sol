@@ -631,8 +631,8 @@ contract ReconfigurationTest is Test {
     function testFuzz_epochTransitionWithVariableInterval(
         uint64 interval
     ) public {
-        // Use reasonable bounds for epoch interval (1 second to 1 week in microseconds)
-        interval = uint64(bound(interval, 1_000_000, 604_800_000_000));
+        // Use reasonable bounds for epoch interval (the 10 second minimum to 1 week in microseconds)
+        interval = uint64(bound(interval, 10_000_000, 604_800_000_000));
 
         // Update interval in EpochConfig using pending pattern before initializing Reconfiguration
         vm.prank(SystemAddresses.GOVERNANCE);

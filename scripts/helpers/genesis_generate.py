@@ -79,33 +79,10 @@ def create_genesis_json(
     # Replace the alloc field with merged data
     genesis["alloc"] = merged_alloc
     
-    # Set large balance for system addresses
-    print("🔧 Setting large balance for system addresses...")
-    system_addresses = {
-        "0x00000000000000000000000000000001625f0000": "SYSTEM_CALLER"
-    }
-    
-    # Use the same large balance as other accounts
-    large_balance = "0x1999999999999999999999999999999999999999999999999999999999999999"
-    
-    for addr, name in system_addresses.items():
-        if addr in genesis["alloc"]:
-            # Preserve existing account data but update balance
-            if "balance" in genesis["alloc"][addr]:
-                old_balance = genesis["alloc"][addr]["balance"]
-                print(f"  - {name} ({addr}): {old_balance} -> {large_balance}")
-            else:
-                print(f"  - {name} ({addr}): setting balance to {large_balance}")
-            
-            genesis["alloc"][addr]["balance"] = large_balance
-        else:
-            # Create new account entry if it doesn't exist
-            print(f"  - {name} ({addr}): creating new account with balance {large_balance}")
-            genesis["alloc"][addr] = {
-                "balance": large_balance,
-                "nonce": 0
-            }
-    
+    # SYSTEM_CALLER (0x...1625F0000) is deliberately not funded: system transactions run with gas
+    # price 0, no value and the balance check off, so it never needs a balance, and one would only
+    # add supply that nobody can spend.
+
     # Write the final genesis.json
     print(f"💾 Writing genesis.json to {output_file}")
     try:
