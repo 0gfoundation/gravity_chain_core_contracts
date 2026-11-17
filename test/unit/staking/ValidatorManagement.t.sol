@@ -730,6 +730,24 @@ contract ValidatorManagementTest is Test {
         }
     }
 
+    function test_getActiveValidatorBonds_matchesActiveValidators() public {
+        _createRegisterAndJoin(alice, MIN_BOND, "alice");
+        _createRegisterAndJoin(bob, MIN_BOND * 2, "bob");
+        _createRegisterAndJoin(charlie, MIN_BOND * 3, "charlie");
+        _processEpoch();
+
+        ValidatorConsensusInfo[] memory full = validatorManager.getActiveValidators();
+        (address[] memory pools, uint256[] memory bonds, uint64[] memory indices) =
+            validatorManager.getActiveValidatorBonds();
+        assertEq(pools.length, full.length);
+        assertEq(pools.length, 3);
+        for (uint256 i = 0; i < full.length; i++) {
+            assertEq(pools[i], full[i].validator);
+            assertEq(bonds[i], full[i].votingPower);
+            assertEq(indices[i], full[i].validatorIndex);
+        }
+    }
+
     function test_onNewEpoch_reassignsIndicesAfterLeave() public {
         address pool1 = _createRegisterAndJoin(alice, MIN_BOND, "alice");
         address pool2 = _createRegisterAndJoin(bob, MIN_BOND, "bob");

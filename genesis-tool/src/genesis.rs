@@ -76,6 +76,41 @@ pub struct GenesisConfig {
     /// Genesis block timestamp (Unix seconds). Falls back to template default if unset.
     #[serde(rename = "genesisTimestampSecs", default)]
     pub genesis_timestamp_secs: Option<u64>,
+
+    /// Block reward rate schedule. Defaults to 8% a year, times 7/8 each year, floor 2.5%.
+    #[serde(rename = "rewardSchedule", default)]
+    pub reward_schedule: RewardScheduleParams,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RewardScheduleParams {
+    #[serde(rename = "initialRateBps")]
+    pub initial_rate_bps: u64,
+
+    #[serde(rename = "floorRateBps")]
+    pub floor_rate_bps: u64,
+
+    #[serde(rename = "decayNumerator")]
+    pub decay_numerator: u64,
+
+    #[serde(rename = "decayDenominator")]
+    pub decay_denominator: u64,
+
+    #[serde(rename = "decayPeriodMicros")]
+    pub decay_period_micros: u64,
+}
+
+impl Default for RewardScheduleParams {
+    fn default() -> Self {
+        Self {
+            initial_rate_bps: 800,
+            floor_rate_bps: 250,
+            decay_numerator: 7,
+            decay_denominator: 8,
+            // 365.2425 days
+            decay_period_micros: 31_556_952_000_000,
+        }
+    }
 }
 
 fn default_chain_id() -> u64 {
@@ -316,6 +351,14 @@ sol! {
         SolRSA_JWK[][] jwks;
     }
 
+    struct SolRewardSchedule {
+        uint64 initialRateBps;
+        uint64 floorRateBps;
+        uint64 decayNumerator;
+        uint64 decayDenominator;
+        uint64 decayPeriodMicros;
+    }
+
     struct SolInitialValidator {
         address operator;
         address owner;
@@ -343,6 +386,7 @@ sol! {
         SolJWKInitParams jwkConfig;
         SolInitialValidator[] validators;
         uint64 initialLockedUntilMicros;
+        SolRewardSchedule rewardSchedule;
     }
 
     contract Genesis {
@@ -556,6 +600,13 @@ pub fn convert_config_to_sol(config: &GenesisConfig) -> SolGenesisInitParams {
         jwkConfig: jwk_config,
         validators,
         initialLockedUntilMicros: config.initial_locked_until_micros,
+        rewardSchedule: SolRewardSchedule {
+            initialRateBps: config.reward_schedule.initial_rate_bps,
+            floorRateBps: config.reward_schedule.floor_rate_bps,
+            decayNumerator: config.reward_schedule.decay_numerator,
+            decayDenominator: config.reward_schedule.decay_denominator,
+            decayPeriodMicros: config.reward_schedule.decay_period_micros,
+        },
     }
 }
 

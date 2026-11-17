@@ -14,6 +14,8 @@ import { ExecutionConfig } from "./runtime/ExecutionConfig.sol";
 import { GovernanceConfig } from "./runtime/GovernanceConfig.sol";
 import { VersionConfig } from "./runtime/VersionConfig.sol";
 import { RandomnessConfig } from "./runtime/RandomnessConfig.sol";
+import { RewardConfig } from "./runtime/RewardConfig.sol";
+import { IRewardConfig } from "./runtime/IRewardConfig.sol";
 
 // System Interfaces
 import { Staking } from "./staking/Staking.sol";
@@ -114,6 +116,8 @@ contract Genesis {
         InitialValidator[] validators;
         /// @notice Lockup expiration timestamp for initial validator stake pools (microseconds)
         uint64 initialLockedUntilMicros;
+        /// @notice Block reward rate schedule
+        IRewardConfig.RewardSchedule rewardSchedule;
     }
 
     // ========================================================================
@@ -223,6 +227,7 @@ contract Genesis {
         VersionConfig(SystemAddresses.VERSION_CONFIG).initialize(params.majorVersion);
 
         RandomnessConfig(SystemAddresses.RANDOMNESS_CONFIG).initialize(params.randomnessConfig);
+        RewardConfig(SystemAddresses.REWARD_CONFIG).initialize(params.rewardSchedule);
     }
 
     function _initializeOracles(

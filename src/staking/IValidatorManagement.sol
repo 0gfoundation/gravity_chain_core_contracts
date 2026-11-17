@@ -279,6 +279,14 @@ interface IValidatorManagement {
     /// @return Array of ValidatorConsensusInfo for all active validators
     function getActiveValidators() external view returns (ValidatorConsensusInfo[] memory);
 
+    /// @notice The active validators' stake pools, bonds (epoch voting power) and indices
+    /// @dev Same order as getActiveValidators, without the key material and addresses: a cheap read
+    ///      for callers that only need the voting power (block rewards, governance snapshots).
+    function getActiveValidatorBonds()
+        external
+        view
+        returns (address[] memory pools, uint256[] memory bonds, uint64[] memory indices);
+
     /// @notice Get a specific active validator by index
     /// @param index Validator index (0 to activeCount-1)
     /// @return ValidatorConsensusInfo for the validator at that index

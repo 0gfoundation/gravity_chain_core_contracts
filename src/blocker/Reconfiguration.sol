@@ -19,6 +19,8 @@ import { ValidatorConfig } from "../runtime/ValidatorConfig.sol";
 import { VersionConfig } from "../runtime/VersionConfig.sol";
 import { GovernanceConfig } from "../runtime/GovernanceConfig.sol";
 import { StakingConfig } from "../runtime/StakingConfig.sol";
+import { RewardConfig } from "../runtime/RewardConfig.sol";
+import { RewardDistributor } from "./RewardDistributor.sol";
 
 /// @title Reconfiguration
 /// @author Gravity Team
@@ -34,6 +36,13 @@ contract Reconfiguration is IReconfiguration {
 
     /// @notice Microseconds per second for conversion
     uint64 public constant MICRO_CONVERSION_FACTOR = 1_000_000;
+
+    /// @notice Gas available to the block reward distribution at each epoch transition
+    /// @dev The cap bounds what a failing distribution can take from the per-block system
+    ///      transaction. Paying one validator costs about 40k gas with cold storage (a validator
+    ///      set of 100 about 4M), so this covers a set of about 250 validators; above that, the
+    ///      distribution runs out of gas, is reported by RewardDistributionFailed and pays nothing.
+    uint256 public constant REWARD_DISTRIBUTION_GAS = 10_000_000;
 
     // ========================================================================
     // STATE
@@ -275,6 +284,21 @@ contract Reconfiguration is IReconfiguration {
     /// @dev Core reconfiguration logic shared by finishTransition() and _doImmediateReconfigure()
     ///      Following Aptos pattern: all config modules apply pending changes at epoch boundary
     function _applyReconfiguration() internal {
+        // 0. Pay the closing epoch's block rewards. ORDERING INVARIANT: this reads the closing
+        //    epoch's validator set, performance counters and reward schedule, so it MUST run before
+        //    pending configs are applied, before ValidatorManagement.onNewEpoch() and before the
+        //    performance tracker is reset. A failure here must never stop the epoch transition, so
+        //    this is a low-level call: unlike a typed or try/catch call, it does not revert the
+        //    caller when the distributor has no code.
+        //    The distributor gets at most REWARD_DISTRIBUTION_GAS, so even a distributor that burns
+        //    all of its gas leaves the rest of the transition enough to complete.
+        (bool rewarded, bytes memory reason) = SystemAddresses.REWARD_DISTRIBUTOR.call{ gas: REWARD_DISTRIBUTION_GAS }(
+            abi.encodeCall(RewardDistributor.distributeEpochRewards, ())
+        );
+        if (!rewarded) {
+            emit RewardDistributionFailed(currentEpoch, reason);
+        }
+
         // 1. Apply pending configs
         IRandomnessConfig(SystemAddresses.RANDOMNESS_CONFIG).applyPendingConfig();
         ConsensusConfig(SystemAddresses.CONSENSUS_CONFIG).applyPendingConfig();
@@ -285,6 +309,7 @@ contract Reconfiguration is IReconfiguration {
         GovernanceConfig(SystemAddresses.GOVERNANCE_CONFIG).applyPendingConfig();
         StakingConfig(SystemAddresses.STAKE_CONFIG).applyPendingConfig();
         EpochConfig(SystemAddresses.EPOCH_CONFIG).applyPendingConfig();
+        RewardConfig(SystemAddresses.REWARD_CONFIG).applyPendingConfig();
 
         // 2. Notify validator manager BEFORE incrementing epoch (Aptos pattern)
         //    Following Aptos reconfiguration.move: stake::on_new_epoch() is called

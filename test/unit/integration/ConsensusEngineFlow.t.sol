@@ -14,6 +14,8 @@ import { DKG } from "../../../src/runtime/DKG.sol";
 import { IDKG } from "../../../src/runtime/IDKG.sol";
 import { RandomnessConfig } from "../../../src/runtime/RandomnessConfig.sol";
 import { EpochConfig } from "../../../src/runtime/EpochConfig.sol";
+import { RewardConfig } from "src/runtime/RewardConfig.sol";
+import { IRewardConfig } from "src/runtime/IRewardConfig.sol";
 import { StakingConfig } from "../../../src/runtime/StakingConfig.sol";
 import { ValidatorConfig } from "../../../src/runtime/ValidatorConfig.sol";
 import { ConsensusConfig } from "../../../src/runtime/ConsensusConfig.sol";
@@ -151,6 +153,12 @@ contract ConsensusEngineFlowTest is Test {
 
         vm.prank(SystemAddresses.GENESIS);
         epochConfig.initialize(TWO_HOURS);
+
+        // Reward schedule (rate 0: these tests are not about rewards)
+        vm.etch(SystemAddresses.REWARD_CONFIG, address(new RewardConfig()).code);
+        vm.prank(SystemAddresses.GENESIS);
+        RewardConfig(SystemAddresses.REWARD_CONFIG)
+            .initialize(IRewardConfig.RewardSchedule(0, 0, 1, 1, uint64(1 days) * 1_000_000));
 
         vm.prank(SystemAddresses.GENESIS);
         randomnessConfig.initialize(_createV2Config());

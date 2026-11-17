@@ -27,6 +27,9 @@ import { JWKManager, IJWKManager } from "../../src/oracle/jwk/JWKManager.sol";
 import { Timestamp } from "../../src/runtime/Timestamp.sol";
 import { ValidatorPerformanceTracker } from "../../src/blocker/ValidatorPerformanceTracker.sol";
 import { MockBlsPopVerify } from "../utils/MockBlsPopVerify.sol";
+import { RewardConfig } from "../../src/runtime/RewardConfig.sol";
+import { IRewardConfig } from "../../src/runtime/IRewardConfig.sol";
+import { RewardDistributor } from "../../src/blocker/RewardDistributor.sol";
 
 contract GenesisTest is Test {
     Genesis genesis;
@@ -41,6 +44,8 @@ contract GenesisTest is Test {
         vm.etch(SystemAddresses.GOVERNANCE_CONFIG, address(new GovernanceConfig()).code);
         vm.etch(SystemAddresses.VERSION_CONFIG, address(new VersionConfig()).code);
         vm.etch(SystemAddresses.RANDOMNESS_CONFIG, address(new RandomnessConfig()).code);
+        vm.etch(SystemAddresses.REWARD_CONFIG, address(new RewardConfig()).code);
+        vm.etch(SystemAddresses.REWARD_DISTRIBUTOR, address(new RewardDistributor()).code);
 
         vm.etch(SystemAddresses.STAKING, address(new Staking()).code);
         vm.etch(SystemAddresses.VALIDATOR_MANAGER, address(new ValidatorManagement()).code);
@@ -116,6 +121,7 @@ contract GenesisTest is Test {
 
         // Initial lockup expiration for genesis validators (microseconds)
         params.initialLockedUntilMicros = 1798848000000000; // ~2027-01-01 in microseconds
+        params.rewardSchedule = IRewardConfig.RewardSchedule(800, 250, 7, 8, 31_556_952_000_000);
 
         // Oracle Config
         uint32[] memory sourceTypes = new uint32[](1);
@@ -154,6 +160,8 @@ contract GenesisTest is Test {
         assertTrue(ValidatorConfig(SystemAddresses.VALIDATOR_CONFIG).isInitialized());
         assertEq(StakingConfig(SystemAddresses.STAKE_CONFIG).minimumStake(), 10 ether);
         assertTrue(EpochConfig(SystemAddresses.EPOCH_CONFIG).isInitialized());
+        assertTrue(RewardConfig(SystemAddresses.REWARD_CONFIG).isInitialized());
+        assertEq(RewardConfig(SystemAddresses.REWARD_CONFIG).getSchedule().initialRateBps, 800);
         assertTrue(ConsensusConfig(SystemAddresses.CONSENSUS_CONFIG).isInitialized());
         assertTrue(ExecutionConfig(SystemAddresses.EXECUTION_CONFIG).isInitialized());
         assertTrue(GovernanceConfig(SystemAddresses.GOVERNANCE_CONFIG).isInitialized());
@@ -244,6 +252,7 @@ contract GenesisTest is Test {
         });
         params.validators = validators;
         params.initialLockedUntilMicros = 1798848000000000;
+        params.rewardSchedule = IRewardConfig.RewardSchedule(800, 250, 7, 8, 31_556_952_000_000);
 
         uint32[] memory sourceTypes = new uint32[](1);
         sourceTypes[0] = 1;
